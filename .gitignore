@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.env
+
+# 运行数据（SQLite 库与正文镜像，随本机生成，不入版本库）
+data/
+
+# Next.js / Node
+node_modules/
+.next/
+next-env.d.ts
+npm-debug.log*
+*.tsbuildinfo
+
+# 编辑器 / 工具产物
+.vscode/
+.idea/
+.DS_Store
+.playwright-mcp/
+*.log

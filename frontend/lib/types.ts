@@ -1,0 +1,1060 @@
+export interface Novel {
+  id: string;
+  title: string;
+  slug: string;
+  synopsis: string;
+  genre: string;
+  worldview: string;
+  author: string;
+  target_word_count: number;
+  word_count: number;
+  chapter_count: number;
+}
+
+export interface ChapterSummary {
+  chapter_id: string;
+  novel_id: string;
+  chapter_number: number;
+  title: string;
+  summary: string;
+  word_count: number;
+  status: string;
+  story_time: string | null;
+  location: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Chapter extends ChapterSummary {
+  content: string;
+  content_path: string;
+}
+
+export interface NovelStats {
+  novel_id: string;
+  word_count: number;
+  chapter_count: number;
+  target_word_count: number;
+  progress: number;
+  character_count: number;
+  event_count: number;
+  canon_fact_count: number;
+  proposed_fact_count: number;
+  foreshadowing_open_count: number;
+  timeline_entry_count: number;
+  pending_review_items: number;
+  latest_continuity_errors: number;
+  latest_continuity_warnings: number;
+}
+
+export interface Character {
+  id: string;
+  name: string;
+  description: string;
+  personality: string;
+  background: string;
+  goals: string[];
+  fears: string[];
+  current_location: string;
+  current_status: string;
+  known_facts: string[];
+  unknown_facts: string[];
+  first_appearance: number | null;
+  last_appearance: number | null;
+}
+
+export interface CharacterState {
+  id: string;
+  character_id: string;
+  chapter_number: number | null;
+  status: string;
+  location: string;
+  note: string;
+  source: string;
+  created_at: string;
+}
+
+export interface CanonFact {
+  id: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  source_chapter: number | null;
+  /** 该事实从第几章起生效（null 表示不限）。 */
+  valid_from_chapter: number | null;
+  /** 该事实在第几章后失效（null 表示仍然有效）。 */
+  valid_until_chapter: number | null;
+  status: string;
+  confidence: number;
+  visibility: string;
+  known_by: string[];
+  origin: string;
+  note: string;
+  superseded_by: string | null;
+}
+
+export interface Foreshadowing {
+  id: string;
+  name: string;
+  description: string;
+  first_chapter: number | null;
+  related_characters: string[];
+  expected_payoff: string;
+  status: string;
+  last_reinforced_chapter: number | null;
+}
+
+export interface TimelineEntry {
+  id: string;
+  story_time: string;
+  story_time_sort: number;
+  chapter_number: number | null;
+  event: string;
+  location: string;
+  description: string;
+  status: string;
+}
+
+export interface EventRecord {
+  id: string;
+  chapter_number: number | null;
+  time: string | null;
+  location: string;
+  characters: string[];
+  description: string;
+  consequences: string;
+  status: string;
+}
+
+export interface WorldRule {
+  id: string;
+  name: string;
+  rule_type: string;
+  subject: string;
+  params: Record<string, unknown>;
+  description: string;
+  source_chapter: number | null;
+}
+
+export interface Evidence {
+  source_chapter: string;
+  ref_type: string;
+  ref_id: string | null;
+  quote: string | null;
+  detail: string | null;
+}
+
+export interface ContinuityIssue {
+  level: "error" | "warning";
+  code: string;
+  message: string;
+  evidence: Evidence[];
+  suggested_fix: string | null;
+}
+
+export interface ContinuityReport {
+  chapter_id: string;
+  chapter_number: number | null;
+  errors: ContinuityIssue[];
+  warnings: ContinuityIssue[];
+  dropped_issues: Record<string, unknown>[];
+  provider: string;
+  model: string;
+  report_id: string | null;
+  created_at: string | null;
+}
+
+export interface ExtractionItem {
+  id: string;
+  run_id: string;
+  kind: string;
+  payload: Record<string, any>;
+  review_status: "PENDING" | "ACCEPTED" | "REJECTED";
+  linked_fact_id: string | null;
+  applied_ref_id: string | null;
+  created_at: string;
+}
+
+export interface ExtractionRun {
+  id: string;
+  novel_id: string;
+  chapter_id: string;
+  chapter_number: number | null;
+  status: string;
+  provider: string;
+  model: string;
+  payload: Record<string, any>;
+  warnings: string[];
+  created_at: string;
+  applied_at: string | null;
+  items: ExtractionItem[];
+}
+
+export interface ApplyResult {
+  run_id: string;
+  status: string;
+  applied: Record<string, any>[];
+  skipped: Record<string, any>[];
+  message: string;
+}
+
+export interface WorkflowStep {
+  step: number;
+  name: string;
+  status: "ok" | "warning" | "error" | "skipped";
+  detail: string;
+}
+
+export interface CompletionReport {
+  chapter_id: string;
+  chapter_number: number | null;
+  steps: WorkflowStep[];
+  extraction_run: ExtractionRun | null;
+  continuity: ContinuityReport | null;
+  /** V0.5：工作流里的设定断言核对结果（未跑或失败时为 null）。 */
+  claims?: ClaimReport | null;
+  pending_items: number;
+  proposed_facts: number;
+  errors: number;
+  warnings: number;
+  message: string;
+  notes?: string[];
+}
+
+export interface EvidenceItem {
+  ref_type: string;
+  ref_id: string | null;
+  title: string;
+  chapter_number: number | null;
+  chapter_title: string | null;
+  excerpt: string;
+  score: number;
+}
+
+export interface ToolCallRecord {
+  name: string;
+  arguments: unknown;
+  status: string;
+}
+
+export interface AskResponse {
+  question: string;
+  answer: string;
+  confidence: string;
+  evidence: EvidenceItem[];
+  provider: string;
+  model: string;
+  warnings: string[];
+  /** simple = 后端先检索再由模型组织语言；agent = 模型自己调用工具取数。 */
+  mode: string;
+  tool_calls: ToolCallRecord[];
+}
+
+export type AskMode = "simple" | "agent";
+
+/** 写作前语义召回的前文片段。 */
+export interface SemanticHit {
+  chapter_number: number | null;
+  chapter_title: string;
+  excerpt: string;
+  score: number;
+}
+
+export interface RetrievalBundle {
+  canon_facts: Record<string, any>[];
+  characters: Record<string, any>[];
+  events: Record<string, any>[];
+  timeline: Record<string, any>[];
+  foreshadowing: Record<string, any>[];
+  world_rules: Record<string, any>[];
+  recent_chapter_summaries: Record<string, any>[];
+  semantic_hits: SemanticHit[];
+  /** V0.4：作者自己的想法碎片（写成正文时优先体现）。 */
+  fragments: Record<string, any>[];
+  notes: string[];
+}
+
+/** 一次生成的章节草稿（写作与修订闭环共用同一结构）。 */
+export interface ChapterDraft {
+  title: string;
+  content: string;
+  word_count: number;
+  chapter_number: number | null;
+  story_time: string | null;
+  location: string | null;
+}
+
+export interface WriteChapterResponse {
+  draft: ChapterDraft;
+  retrieved: RetrievalBundle;
+  provider: string;
+  model: string;
+  warnings: string[];
+  saved_chapter_id: string | null;
+  generation_id: string | null;
+}
+
+export interface ProviderInfo {
+  name: string;
+  model: string;
+  kind: string;
+  available: boolean;
+  supports_tools: boolean;
+  detail: string;
+}
+
+export interface SearchHit {
+  chapter_id: string;
+  chapter_number: number;
+  title: string;
+  snippet: string;
+  score: number;
+  match_source: string;
+}
+
+export interface Bible {
+  characters: Character[];
+  relationships: { id: string; character_a: string; character_b: string; relation: string; description: string }[];
+  events: EventRecord[];
+  canon_facts: CanonFact[];
+  foreshadowings: Foreshadowing[];
+  timeline: TimelineEntry[];
+  world_rules: WorldRule[];
+}
+
+/** 第 N 章时的人物状态快照。 */
+export interface AsOfCharacter {
+  name: string;
+  status_at_chapter: string;
+  location_at_chapter: string;
+  current_status: string;
+  first_appearance: number | null;
+  /** 该章之前是否有记录过状态变更（否则取当前值）。 */
+  changed_since: boolean;
+}
+
+export interface AsOfState {
+  novel_id: string;
+  chapter_number: number;
+  canon_facts: CanonFact[];
+  characters: AsOfCharacter[];
+  timeline: TimelineEntry[];
+  events: EventRecord[];
+  foreshadowings: Foreshadowing[];
+  world_rules: WorldRule[];
+  notes: string[];
+}
+
+export interface ForeshadowingDebtItem {
+  id: string;
+  name: string;
+  status: string;
+  description: string;
+  first_chapter: number | null;
+  last_reinforced_chapter: number | null;
+  related_characters: string[];
+  expected_payoff: string;
+  /** 已多少章未推进。 */
+  age: number;
+  overdue: boolean;
+  evidence: string;
+}
+
+export interface ForeshadowingSuggestion {
+  foreshadowing_id: string;
+  name: string;
+  status: string;
+  age: number;
+  overdue: boolean;
+  suggested_chapter: number;
+  urgency: "HIGH" | "MEDIUM" | "LOW";
+  related_characters: string[];
+  reason: string;
+  expected_payoff: string;
+}
+
+export interface ForeshadowingPlan {
+  frontier_chapter: number;
+  horizon: number;
+  overdue_count: number;
+  open_count: number;
+  suggestions: ForeshadowingSuggestion[];
+  debt: ForeshadowingDebtItem[];
+}
+
+export type SweepMode = "rules" | "full";
+
+export interface SweepPayload {
+  mode: SweepMode;
+  provider?: string;
+  narrative_pass?: boolean;
+  chapter_numbers?: number[];
+}
+
+export interface SweepDetail {
+  chapters?: unknown[];
+  error_totals?: Record<string, number>;
+  warning_totals?: Record<string, number>;
+}
+
+export interface SweepRun {
+  id: string;
+  novel_id: string;
+  mode: string;
+  provider: string;
+  model: string;
+  chapters_total: number;
+  chapters_checked: number;
+  errors: number;
+  warnings: number;
+  detail: SweepDetail;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface ChapterHealth {
+  chapter_number: number;
+  title: string;
+  word_count: number;
+  checked_at: string | null;
+  errors: number;
+  warnings: number;
+  top_codes: string[];
+}
+
+export interface EmbeddingStats {
+  records: number;
+  by_ref_type: Record<string, number>;
+  providers: string[];
+  dim: number;
+}
+
+export interface ReindexResult {
+  provider: string;
+  dim: number;
+  chapters: number;
+  chapter_chunks: number;
+  entities: Record<string, number>;
+  warnings: string[];
+}
+
+export interface Dashboard {
+  novel_id: string;
+  word_count: number;
+  chapter_count: number;
+  target_word_count: number;
+  chapters: ChapterHealth[];
+  error_totals: Record<string, number>;
+  error_chapters: number[];
+  unchecked_chapters: number[];
+  foreshadowing_debt: ForeshadowingDebtItem[];
+  overdue_foreshadowing: number;
+  proposed_backlog: number;
+  pending_review_items: number;
+  vector_index: EmbeddingStats;
+  latest_sweep: SweepRun | null;
+  /** V0.3：全局不变量、承诺账本与文风。 */
+  invariant_errors: number;
+  invariant_warnings: number;
+  invariant_codes: Record<string, number>;
+  invariant_issues: InvariantIssue[];
+  commitments_open: number;
+  commitments_overdue: number;
+  commitments_overdue_items: Commitment[];
+  style_baseline: string;
+  style_review_average: number | null;
+  /** V0.4：作者声音画像的名称与特征词（没有画像时为空）。 */
+  voice_profile: string;
+  voice_terms: string[];
+  fragments_total: number;
+  fragments_unplaced: number;
+  fragments_realized: number;
+  fragment_realization_rate: number;
+  /** kind → 条数。 */
+  fragment_kinds: Record<string, number>;
+  /** V0.5：文风是否锁定、漂移章数与最近的断言核对统计。 */
+  style_locked: boolean;
+  style_drift_chapters: number;
+  claim_reports: number;
+  claim_conflicts: number;
+  claim_unverified: number;
+  notes: string[];
+}
+
+export type RetrievalRefType =
+  | "CHAPTER"
+  | "CANON_FACT"
+  | "TIMELINE"
+  | "EVENT"
+  | "CHARACTER"
+  | "FORESHADOWING";
+
+export interface RetrievalHit {
+  ref_type: string;
+  ref_id: string;
+  chapter_number: number | null;
+  title: string;
+  excerpt: string;
+  keyword_score: number;
+  vector_score: number;
+  term_weight: number;
+  terms_matched: string[];
+  channels: string[];
+  score: number;
+}
+
+export interface RetrievalResult {
+  query: string;
+  engine: string;
+  channels: string[];
+  hits: RetrievalHit[];
+}
+
+export type PlanStatus = "PLANNED" | "WRITTEN" | "DISCARDED";
+
+export interface ChapterPlan {
+  id: string;
+  novel_id: string;
+  chapter_number: number;
+  title: string;
+  goals: string;
+  must_include: string[];
+  forbidden: string[];
+  characters: string[];
+  advance_foreshadowing: string[];
+  rationale: string;
+  steer: string;
+  status: PlanStatus;
+  source: string;
+  provider: string;
+  model: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanGenerateContextSummary {
+  frontier_chapter: number;
+  canon_facts: number;
+  characters: number;
+  foreshadowing_debt: number;
+  recent_summaries: number;
+  skipped: { chapter_number: number; reason: string }[];
+}
+
+export interface PlanGenerateResponse {
+  plans: ChapterPlan[];
+  provider: string;
+  model: string;
+  warnings: string[];
+  context_summary: PlanGenerateContextSummary;
+}
+
+// --------------------------------------------------------------------------- V0.3 文风
+/** 基线里单个指标的分布（由样章的测量值统计而来）。 */
+export interface StyleMetricStat {
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+}
+
+export interface StyleProfile {
+  id: string;
+  novel_id: string;
+  name: string;
+  /** CHAPTERS（用本书章节建立）或 TEXTS（直接贴文本）。 */
+  source: string;
+  sample_count: number;
+  total_chars: number;
+  /**
+   * 指标名 → 分布；同时混有 metrics_version / sample_count / samples 等元信息，
+   * 读取时必须先判型（见 StyleReviewView 的 metricStat）。
+   */
+  metrics: Record<string, any>;
+  samples: string[];
+  is_default: boolean;
+  /** V0.5：锁定后新章按收紧一半的窗口比对。 */
+  locked: boolean;
+  created_at: string;
+}
+
+export interface StyleBaselineRequest {
+  name?: string;
+  /** 指定章节号；留空且没有 texts 时用本书已完成章节。 */
+  chapter_numbers?: number[];
+  texts?: string[];
+  make_default?: boolean;
+}
+
+export interface StyleLockRequest {
+  locked: boolean;
+}
+
+export interface StyleIssue {
+  code: string;
+  level: "warning" | "info";
+  metric: string;
+  message: string;
+  value: number;
+  /** 指标参考值（本书基线均值），没有基线时为 null。 */
+  reference: number | null;
+  excerpt: string;
+  suggestion: string;
+}
+
+export interface StyleReview {
+  chapter_id: string | null;
+  chapter_number: number | null;
+  score: number;
+  /** 同时含 cliche_hits / hook_signals 等非数值项，读取时需判型。 */
+  metrics: Record<string, any>;
+  issues: StyleIssue[];
+  baseline: string;
+  /** 指标名 → 分布。 */
+  baseline_metrics: Record<string, any>;
+  warnings: string[];
+  model_summary: string;
+  provider: string;
+  model: string;
+  review_id: string | null;
+}
+
+/** 历史文风评审条目（GET /style/reviews）。 */
+export interface StyleReviewSummary {
+  id: string;
+  chapter_number: number | null;
+  label: string;
+  score: number;
+  codes: string[];
+  metrics: Record<string, any>;
+  provider: string;
+  model: string;
+  created_at: string;
+}
+
+/** 逐章漂移里的一个越界指标（direction：lower_better / higher_better / range；side：low / high）。 */
+export interface StyleDriftItem {
+  chapter_number: number;
+  title: string;
+  score: number;
+  drifted: {
+    metric: string;
+    value: number;
+    mean: number;
+    low: number;
+    high: number;
+    direction: string;
+    side: string;
+  }[];
+}
+
+export interface StyleDriftReport {
+  locked: boolean;
+  profile_id: string | null;
+  profile_name: string;
+  /** locked / baseline / none。 */
+  direction: string;
+  chapters: StyleDriftItem[];
+  drifted_count: number;
+}
+
+// --------------------------------------------------------------------------- V0.3 全局不变量
+export interface InvariantEvidence {
+  source_chapter: string;
+  quote?: string | null;
+  detail?: string | null;
+}
+
+export interface InvariantIssue {
+  code: string;
+  level: "error" | "warning" | "info";
+  subject: string;
+  message: string;
+  evidence: InvariantEvidence[];
+  suggestion: string;
+}
+
+export interface InvariantReport {
+  novel_id: string;
+  report_id?: string | null;
+  created_at?: string | null;
+  errors: number;
+  warnings: number;
+  /** code → 条数。 */
+  codes: Record<string, number>;
+  /** 读最近一次留存报告时后端不带这项，字段会是空对象。 */
+  checked: { chapters?: number; facts?: number; characters?: number };
+  issues: InvariantIssue[];
+}
+
+// --------------------------------------------------------------------------- V0.3 承诺账本
+export type CommitmentKind = "APPOINTMENT" | "DEADLINE" | "THREAT" | "PROMISE" | "QUESTION";
+
+export type CommitmentStatus = "OPEN" | "OVERDUE" | "FULFILLED" | "ABANDONED";
+
+export interface CommitmentEvidence {
+  source_chapter: string;
+  quote?: string | null;
+  detail?: string | null;
+}
+
+export interface Commitment {
+  id: string;
+  kind: CommitmentKind;
+  who: string;
+  counterpart: string;
+  what: string;
+  quote: string;
+  source_chapter: number | null;
+  deadline_text: string;
+  due_story_time: string | null;
+  /** 后端按故事时间算出的实时状态：越界后为 OVERDUE。 */
+  status: CommitmentStatus;
+  /** 库里存的状态（可能仍是 OPEN，只有显式重跑才会写回）。 */
+  stored_status: string;
+  fulfilled_chapter: number | null;
+  days_remaining: number | null;
+  breach_chapter: number | null;
+  frontier_chapter: number;
+  evidence: CommitmentEvidence[];
+}
+
+export interface CommitmentCreate {
+  source_chapter?: number;
+  kind?: CommitmentKind;
+  who?: string;
+  counterpart?: string;
+  what: string;
+  quote?: string;
+  deadline_text?: string;
+  note?: string;
+}
+
+// --------------------------------------------------------------------------- V0.3 修订闭环
+export interface RevisionRound {
+  round: number;
+  /** draft / revised / no-change。 */
+  stage: string;
+  score: number;
+  word_count: number;
+  /** 这一轮的「声音保留分」；没有作者声音画像时为 null。 */
+  voice_score?: number | null;
+  style_codes: string[];
+  continuity_codes: string[];
+}
+
+export interface RevisionMetricDelta {
+  before: number;
+  after: number;
+  delta: number;
+  /** null 表示该指标只应落在区间内，无法判定好坏。 */
+  better: boolean | null;
+}
+
+export interface RevisionMetricDeltas {
+  deltas: Record<string, RevisionMetricDelta>;
+  improved: number;
+  worsened: number;
+}
+
+export interface RevisionRequest {
+  goals: string;
+  must_include?: string[];
+  forbidden?: string[];
+  characters?: string[];
+  chapter_number?: number;
+  title?: string;
+  story_time?: string;
+  location?: string;
+  target_words?: number;
+  provider?: string;
+  save?: boolean;
+  plan_id?: string;
+  /** 0-4，默认 2。 */
+  max_rounds?: number;
+  /** 默认 85。 */
+  target_score?: number;
+  /** 默认 true。 */
+  use_model_critic?: boolean;
+}
+
+export interface RevisionResponse {
+  draft: ChapterDraft;
+  rounds: RevisionRound[];
+  accepted: boolean;
+  final_score: number;
+  metric_deltas: RevisionMetricDeltas;
+  retrieved: RetrievalBundle;
+  provider: string;
+  model: string;
+  warnings: string[];
+  saved_chapter_id: string | null;
+  generation_id: string | null;
+  goal: string;
+  plan_id: string | null;
+}
+
+// --------------------------------------------------------------------------- V0.4 想法碎片
+/** 碎片类型：奇思妙想 / 画面 / 想写的句子 / 场景 / 主题看法 / 人物瞬间 / 桥段机制 / 其他。 */
+export type FragmentKind =
+  | "WHIM"
+  | "IMAGE"
+  | "LINE"
+  | "SCENE"
+  | "THEME"
+  | "CHARACTER"
+  | "MECHANIC"
+  | "OTHER";
+
+export type FragmentStatus = "INBOX" | "PLACED" | "REALIZED" | "ARCHIVED";
+
+/** 成文时这条碎片被怎么用：QUOTED = 作者原话被原样保留。 */
+export type FragmentTreatment = "" | "QUOTED" | "PARAPHRASED" | "EXPANDED" | "BACKGROUND";
+
+/** 作者的一条想法碎片：允许不完整、可以很碎。 */
+export interface Fragment {
+  id: string;
+  novel_id: string;
+  kind: FragmentKind;
+  title: string;
+  text: string;
+  /** 作者自己写的意图（这一条想表达什么）。 */
+  intent: string;
+  tags: string[];
+  related_characters: string[];
+  target_chapter: number | null;
+  status: FragmentStatus;
+  priority: number;
+  /** USER = 作者手记；PROMPT = 系统提问后写下的回答。 */
+  origin: string;
+  prompted_by: string;
+  realized_chapter_id: string | null;
+  realized_excerpt: string;
+  realized_treatment: FragmentTreatment;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FragmentCreate {
+  kind?: FragmentKind;
+  title?: string;
+  text: string;
+  intent?: string;
+  tags?: string[];
+  related_characters?: string[];
+  target_chapter?: number | null;
+  status?: FragmentStatus;
+  priority?: number;
+  origin?: string;
+  prompted_by?: string;
+  notes?: string;
+}
+
+/** 碎片的部分更新（PATCH 只传要改的字段）。 */
+export type FragmentUpdate = Partial<Omit<FragmentCreate, "text">> & { text?: string };
+
+export interface FragmentQuery {
+  status?: FragmentStatus;
+  kind?: FragmentKind;
+  character?: string;
+  targetChapter?: number;
+  unplacedOnly?: boolean;
+  limit?: number;
+}
+
+export interface FragmentStats {
+  total: number;
+  by_status: Record<string, number>;
+  by_kind: Record<string, number>;
+  inbox: number;
+  unplaced: number;
+  realized: number;
+  realization_rate: number;
+}
+
+/** 碎片 → 正文的一条对应关系（成文后给作者核对）。 */
+export interface FragmentPassage {
+  /** 碎片 id；`__bridge__` 表示过渡段落，不属于任何碎片。 */
+  fragment_id: string;
+  prose: string;
+  /** 被原样沿用的那句原话；没有则为空。 */
+  uses_quote: string;
+  treatment: Exclude<FragmentTreatment, "">;
+}
+
+export interface UndevelopedFragment {
+  fragment_id: string;
+  reason: string;
+}
+
+/** 成文里出现、但 Canon 未记录的设定性陈述。 */
+export interface InventedClaim {
+  subject: string;
+  predicate: string;
+  object: string;
+}
+
+export interface FragmentCoverage {
+  fragments_total: number;
+  fragments_used: number;
+  used_ids: string[];
+  unused_ids: string[];
+  ratio: number;
+}
+
+export interface FragmentRealization {
+  title: string;
+  content: string;
+  word_count: number;
+  passages: FragmentPassage[];
+  undeveloped: UndevelopedFragment[];
+  coverage: FragmentCoverage;
+  invented_claims: InventedClaim[];
+  notes: string;
+  saved_chapter_id: string | null;
+  chapter_number: number | null;
+}
+
+export interface FragmentRealizeRequest {
+  fragment_ids?: string[];
+  raw_fragments?: string[];
+  goals?: string;
+  tone?: string;
+  must_keep?: string[];
+  forbidden?: string[];
+  characters?: string[];
+  chapter_number?: number;
+  target_words?: number;
+  provider?: string;
+  save?: boolean;
+  revise?: boolean;
+  /** 0-3，默认 1。 */
+  max_rounds?: number;
+  /** 默认 85。 */
+  target_score?: number;
+  use_model_critic?: boolean;
+}
+
+/** 成文后的文风体检；未走改稿闭环时只有 final_score / issues / metrics。 */
+export interface RealizeStyleReport {
+  final_score: number;
+  /** null 表示没有走改稿闭环。 */
+  accepted?: boolean | null;
+  rounds?: RevisionRound[];
+  metric_deltas?: RevisionMetricDeltas;
+  issues?: StyleIssue[];
+  metrics?: Record<string, any>;
+}
+
+/** 声音保留分：这段文字有多像作者本人（越高越好）。 */
+export interface VoiceReport {
+  score: number | null;
+  available: boolean;
+  signature_hits: string[];
+  signature_expected?: number;
+  profile_terms?: string[];
+  components: Record<string, number>;
+}
+
+export interface FragmentRealizeResponse {
+  realization: FragmentRealization;
+  provider: string;
+  model: string;
+  warnings: string[];
+  style: Partial<RealizeStyleReport>;
+  /** 没有作者声音画像时后端返回空对象。 */
+  voice: Partial<VoiceReport>;
+  fragments_updated: number;
+}
+
+export interface EmotionPromptRequest {
+  goals?: string;
+  characters?: string[];
+  chapter_number?: number;
+  provider?: string;
+}
+
+/** 情感引导：系统只提问，答案由作者写。 */
+export interface EmotionPromptResponse {
+  questions: string[];
+  provider: string;
+  model: string;
+  warnings: string[];
+}
+
+/** 作者声音画像：他惯用的词、标点与断句习惯。 */
+export interface VoiceProfile {
+  available: boolean;
+  name: string;
+  sample_count: number;
+  total_chars: number;
+  signature_terms: string[];
+  /** 标点 → 占比。 */
+  punctuation: Record<string, number>;
+  created_at: string | null;
+}
+
+export interface VoiceProfileRequest {
+  name?: string;
+  chapter_numbers?: number[];
+  texts?: string[];
+}
+
+export interface ChapterIntent {
+  chapter_number: number;
+  fragments: Fragment[];
+  intents: string[];
+  count: number;
+}
+
+// --------------------------------------------------------------------------- V0.5 设定断言核对
+/** 一条判定的依据：Canon 事实或世界观规则。 */
+export interface ClaimEvidence {
+  kind: string;
+  text: string;
+  source_chapter: number | null;
+  fact_id?: string | null;
+  rule_type?: string;
+}
+
+/** 正文里的一条设定断言与它的核对结论。 */
+export interface ClaimVerdict {
+  claim: {
+    subject: string;
+    predicate: string;
+    object: string;
+    kind?: string;
+    /** 正文里的原句（必须能逐字对上正文）。 */
+    quote?: string;
+    /** deterministic = 确定性规则抽出；model = 模型抽出。 */
+    origin?: string;
+  };
+  verdict: "SUPPORTED" | "UNVERIFIED" | "CONFLICT";
+  reason: string;
+  evidence: ClaimEvidence[];
+}
+
+/** 一次断言核对的报告：只出结论，绝不写 Canon。 */
+export interface ClaimReport {
+  id?: string | null;
+  novel_id: string;
+  chapter_id?: string | null;
+  chapter_number?: number | null;
+  /** DRAFT（贴的草稿）或 CHAPTER（某一章正文）。 */
+  label: string;
+  as_of_chapter?: number | null;
+  claim_count: number;
+  supported_count: number;
+  unverified_count: number;
+  conflict_count: number;
+  claims: ClaimVerdict[];
+  conflicts: ClaimVerdict[];
+  unverified: ClaimVerdict[];
+  supported: ClaimVerdict[];
+  provider: string;
+  model: string;
+  warnings: string[];
+  summary: string;
+  created_at?: string | null;
+}

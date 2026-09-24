@@ -1,0 +1,4 @@
+# 可选加速：装了 numpy 后向量检索走矩阵运算（百万字量级推荐）
+# 未安装时自动回退纯 Python 实现，功能不受影响
+-r requirements.txt
+numpy>=1.26
