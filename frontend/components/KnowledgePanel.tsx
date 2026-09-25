@@ -6,6 +6,7 @@ import { DashboardPanel } from "@/components/DashboardPanel";
 import { FragmentBoard } from "@/components/FragmentBoard";
 import { PlanPanel } from "@/components/PlanPanel";
 import { QualityPanel } from "@/components/QualityPanel";
+import { StructurePanel } from "@/components/StructurePanel";
 import type { AsOfState, AskResponse, Bible, CharacterState, Dashboard, Novel } from "@/lib/types";
 
 type TabKey =
@@ -17,6 +18,7 @@ type TabKey =
   | "canon"
   | "dashboard"
   | "plan"
+  | "structure"
   | "fragments"
   | "quality"
   | "qa";
@@ -30,6 +32,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "canon", label: "Canon" },
   { key: "dashboard", label: "总览" },
   { key: "plan", label: "规划" },
+  { key: "structure", label: "结构" },
   { key: "fragments", label: "碎片" },
   { key: "quality", label: "质量" },
   { key: "qa", label: "QA" },
@@ -146,7 +149,11 @@ export function KnowledgePanel({
   );
   const character = bible?.characters.find((item) => item.id === openCharacter) ?? null;
   const needsBible =
-    tab !== "dashboard" && tab !== "plan" && tab !== "fragments" && tab !== "quality";
+    tab !== "dashboard" &&
+    tab !== "plan" &&
+    tab !== "structure" &&
+    tab !== "fragments" &&
+    tab !== "quality";
 
   return (
     <div className="bottom">
@@ -179,6 +186,17 @@ export function KnowledgePanel({
 
         {tab === "plan" && (
           <PlanPanel
+            novelId={novelId}
+            provider={provider}
+            chaptersVersion={chaptersVersion}
+            onRefresh={onRefresh}
+            setStatus={setStatus}
+            setError={setError}
+          />
+        )}
+
+        {tab === "structure" && (
+          <StructurePanel
             novelId={novelId}
             provider={provider}
             chaptersVersion={chaptersVersion}

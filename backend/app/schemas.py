@@ -1583,3 +1583,61 @@ class PublishCheckOut(BaseModel):
     blocking: int = 0
     warnings: int = 0
     ready: bool = True
+
+
+# --------------------------------------------------------------------------- 结构视图（V0.7）
+class StructureChapter(BaseModel):
+    chapter_id: str = ""
+    chapter_number: int = 0
+    title: str = ""
+    word_count: int = 0
+    hook_score: float = 0.0
+    advancement_per_1k: float = 0.0
+    filler_paragraph_ratio: float = 0.0
+    conflict_per_1k: float = 0.0
+    dialogue_ratio: float = 0.0
+    continuity_errors: int = 0
+    continuity_warnings: int = 0
+    claim_conflicts: int = 0
+    foreshadowing_opened: list[str] = Field(default_factory=list)
+    foreshadowing_advanced: list[str] = Field(default_factory=list)
+    commitments_due: list[str] = Field(default_factory=list)
+    verdicts: list[str] = Field(default_factory=list)
+
+
+class StructureWeakRun(BaseModel):
+    start_chapter: int = 0
+    end_chapter: int = 0
+    length: int = 0
+    reasons: list[str] = Field(default_factory=list)
+
+
+class StructurePaceWindow(BaseModel):
+    start_chapter: int = 0
+    end_chapter: int = 0
+    avg_hook: float = 0.0
+    avg_advancement: float = 0.0
+    avg_conflict: float = 0.0
+    book_avg_hook: float = 0.0
+    words: int = 0
+    peak_chapter: int = 0
+    verdict: str = ""
+
+
+class StructureSummary(BaseModel):
+    weak_chapters: int = 0
+    weakest_run: StructureWeakRun | None = None
+    weakest_window: StructurePaceWindow | None = None
+
+
+class StructureViewOut(BaseModel):
+    novel_id: str = ""
+    title: str = ""
+    chapter_count: int = 0
+    word_count: int = 0
+    target_word_count: int = 0
+    floors: dict[str, float] = Field(default_factory=dict)
+    chapters: list[StructureChapter] = Field(default_factory=list)
+    weak_runs: list[StructureWeakRun] = Field(default_factory=list)
+    pace_windows: list[StructurePaceWindow] = Field(default_factory=list)
+    summary: StructureSummary = Field(default_factory=StructureSummary)

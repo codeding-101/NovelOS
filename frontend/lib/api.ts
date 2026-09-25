@@ -41,6 +41,7 @@ import type {
   RevisionRequest,
   RevisionResponse,
   SearchHit,
+  StructureView,
   StyleBaselineRequest,
   StyleDriftReport,
   StyleProfile,
@@ -466,4 +467,8 @@ export const api = {
       attachmentFilename(response.headers.get("Content-Disposition")) || `${novelId}.${fmt}`;
     return { text, filename };
   },
+
+  // ------------------------------------------------------------------ V0.7 结构视图
+  /** 全书结构视图：逐章信号 + 连续弱区 + 每 5 章的节奏窗口（只读，不落库）。 */
+  structure: (novelId: string) => request<StructureView>(`/novels/${novelId}/structure`),
 };

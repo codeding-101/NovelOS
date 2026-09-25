@@ -1115,3 +1115,66 @@ export interface PublishCheck {
   warnings: number;
   ready: boolean;
 }
+
+// --------------------------------------------------------------------------- V0.7 结构视图
+/** 结构视图里的一章：正文层的节奏信号 + 跨章的结构事件（伏笔首现/推进、承诺到期）。 */
+export interface StructureChapter {
+  chapter_id: string;
+  chapter_number: number;
+  title: string;
+  word_count: number;
+  hook_score: number;
+  advancement_per_1k: number;
+  filler_paragraph_ratio: number;
+  conflict_per_1k: number;
+  dialogue_ratio: number;
+  continuity_errors: number;
+  continuity_warnings: number;
+  claim_conflicts: number;
+  foreshadowing_opened: string[];
+  foreshadowing_advanced: string[];
+  commitments_due: string[];
+  /** 本章不达标的原因；空数组表示没问题。 */
+  verdicts: string[];
+}
+
+/** 连续不达标的章节区间：单章弱可以忍，连着弱是读者会走的地方。 */
+export interface StructureWeakRun {
+  start_chapter: number;
+  end_chapter: number;
+  length: number;
+  reasons: string[];
+}
+
+/** 每 PACE_WINDOW（5）章一个节奏窗口，看这一段整体有没有「小高潮」。 */
+export interface StructurePaceWindow {
+  start_chapter: number;
+  end_chapter: number;
+  avg_hook: number;
+  avg_advancement: number;
+  avg_conflict: number;
+  words: number;
+  peak_chapter: number;
+  verdict: string;
+}
+
+export interface StructureSummary {
+  weak_chapters: number;
+  weakest_run: StructureWeakRun | null;
+  weakest_window: StructurePaceWindow | null;
+}
+
+/** 全书结构视图：逐章信号 + 连续弱区 + 每 5 章的节奏窗口。 */
+export interface StructureView {
+  novel_id: string;
+  title: string;
+  chapter_count: number;
+  word_count: number;
+  target_word_count: number;
+  /** 经验下限：hook_floor / advancement_floor / filler_ceiling / pace_window。 */
+  floors: Record<string, number>;
+  chapters: StructureChapter[];
+  weak_runs: StructureWeakRun[];
+  pace_windows: StructurePaceWindow[];
+  summary: StructureSummary;
+}

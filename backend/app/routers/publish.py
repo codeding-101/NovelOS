@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.models import Chapter, Novel
-from app.schemas import PublishCheckOut, PublishCheckRequest
-from app.services import publish_service, style_service
+from app.schemas import PublishCheckOut, PublishCheckRequest, StructureViewOut
+from app.services import publish_service, structure_service, style_service
 
 novel_router = APIRouter(prefix="/api/novels", tags=["发布"])
 chapter_router = APIRouter(prefix="/api/chapters", tags=["发布"])
@@ -75,6 +75,16 @@ def publish_check_text(
         payload_out["chapter_id"] = chapter.id
     payload_out["novel_title"] = novel.title
     return payload_out
+
+
+@novel_router.get("/{novel_id}/structure", response_model=StructureViewOut)
+def structure_view(novel_id: str, session: Session = Depends(get_session)) -> dict:
+    """全书结构视图：逐章节奏信号、连续弱区、每 5 章的节奏窗口。
+
+    面向平台点名的「结构失常」「大段内容未能推动情节发展」，以及读者会在哪一段掉队。
+    """
+    novel = _novel(session, novel_id)
+    return structure_service.structure_view(session, novel)
 
 
 @novel_router.get("/{novel_id}/export")

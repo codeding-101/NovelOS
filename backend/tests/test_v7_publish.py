@@ -147,6 +147,37 @@ def test_publish_check_api_on_draft_text(client, novel):
     assert empty.status_code == 400
 
 
+def test_structure_view_lines_up_chapters_and_flags_weak_runs(client, novel, chapters):
+    """结构视图：逐章信号对齐、连续弱区、节奏窗口——用来找读者会掉队的地方。"""
+    response = client.get(f"/api/novels/{novel.id}/structure")
+    assert response.status_code == 200, response.text
+    view = response.json()
+
+    assert view["chapter_count"] == len(chapters)
+    numbers = [row["chapter_number"] for row in view["chapters"]]
+    assert numbers == sorted(numbers), "按章号排序"
+    first = view["chapters"][0]
+    for key in (
+        "hook_score",
+        "advancement_per_1k",
+        "filler_paragraph_ratio",
+        "continuity_errors",
+        "claim_conflicts",
+        "verdicts",
+    ):
+        assert key in first, f"缺字段 {key}"
+    assert view["floors"]["pace_window"] >= 3
+
+    for run in view["weak_runs"]:
+        assert run["end_chapter"] >= run["start_chapter"]
+        assert run["length"] == run["end_chapter"] - run["start_chapter"] + 1
+        assert run["reasons"], "弱区必须说明原因"
+
+    for window in view["pace_windows"]:
+        assert window["end_chapter"] - window["start_chapter"] + 1 <= view["floors"]["pace_window"]
+        assert window["verdict"]
+
+
 def test_export_filename_survives_a_chinese_slug(client):
     """中文书名会变成中文目录名，响应头必须能用（HTTP 头只能是 latin-1）。"""
     created = client.post("/api/novels", json={"title": "剑起青云"}).json()
