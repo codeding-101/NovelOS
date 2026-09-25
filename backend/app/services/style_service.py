@@ -173,6 +173,11 @@ class StyleMetrics:
     novel_char_ratio: float = 0.0
     #: 段落平均字数（V0.9）：低于 30 字基本就是一句一段的碎片流
     avg_paragraph_chars: float = 0.0
+    #: 非对白段落里「单句成段」的占比（V0.9）：
+    #: 对白各自成段是正常排版，意识流指的是**叙述**被切碎，所以判定只看非对白段落。
+    short_narration_ratio: float = 0.0
+    #: 故作深沉／文艺腔的用词密度（V0.9，每千字）
+    portentous_per_1k: float = 0.0
     summary_per_1k: float = 0.0
     elevation_per_1k: float = 0.0
     transition_per_1k: float = 0.0
@@ -251,6 +256,10 @@ DEFAULT_RANGES: dict[str, tuple[float, float]] = {
     # 写成碎片流（意识流）会到 25% 以上。段落平均字数同理：低于 30 字基本就是一句一段。
     "short_paragraph_ratio": (0.0, 0.18),
     "avg_paragraph_chars": (30.0, 200.0),
+    # 叙述碎片流：对白段落不计入，实测正常网文（含对白密集的）都很低
+    "short_narration_ratio": (0.0, 0.15),
+    # 文艺腔：正常网文是 0，故意深沉能到 100+，卡在 3 处/千字既宽松又拦得住
+    "portentous_per_1k": (0.0, 3.0),
     "summary_per_1k": (0.0, 2.5),
     "elevation_per_1k": (0.0, 3.0),
     "transition_per_1k": (0.0, 6.0),
@@ -270,6 +279,9 @@ MIN_TOLERANCE: dict[str, float] = {
     "dialogue_paragraph_ratio": 0.1,
     "cliche_per_1k": 0.8,
     "cliche_variety": 0.1,
+    "portentous_per_1k": 1.5,
+    "short_narration_ratio": 0.05,
+    "short_paragraph_ratio": 0.05,
     "abstract_per_1k": 3.0,
     "explaining_per_1k": 4.0,
     "conflict_per_1k": 2.0,
@@ -334,6 +346,15 @@ def _hook(text: str) -> tuple[float, list[str]]:
         signals.append("句子被截断")
     return round(score, 3), signals
 
+
+#: 「故作深沉／文艺腔」标记（V0.9）：这本书定的是热血、青春、休闲的路子，
+#: 这类词密起来就会读成另一个人写的。实测正常网文与本书正文都是 0 处/千字，
+#: 故意深沉的稿子能到 100 处以上，所以阈值卡在个位数就够。
+PORTENTOUS_MARKERS = (
+    "宿命", "注定", "苍凉", "寂寥", "唯有", "冥冥", "命运的齿轮", "恍然", "忽然明白",
+    "久久不语", "沉默了很久", "无形", "深邃", "怅然", "惘然", "落寞", "若有所失",
+    "说不清道不明", "意味深长", "若有所思", "不可名状", "难以言喻", "沉默良久", "许久无言",
+)
 
 #: 判断一段话「有没有戏」用的动作字。比人物动作表更窄：
 #: 去掉「起」这类过泛的字（雾气升起），也去掉「道/拉」这类在景物里常见的字（拉出一道影子），
@@ -443,12 +464,28 @@ def _windowed_word_stats(text: str) -> tuple[float, float]:
 
 
 def _verb_variety(text: str) -> float:
-    """动作动词的类符/形符比：同一个动词被反复用（说、看、走）就会很低。"""
+    """动作动词的类符/形符比：同一个动词被反复用（说、看、走）就会很低。
+
+    只统计**非对白段落**：对白里「他说」「她问」本来就该反复出现，
+    把它算进去会让对白密集的章节无故背锅（实测对白多的章会掉到 0.17 以下）。
+    """
+    narration = "\n".join(
+        paragraph for paragraph in (text or "").split("\n") if not DIALOGUE_RE.search(paragraph)
+    )
+    target = narration
     hits: list[str] = []
     for word in TWO_CHAR_ACTIONS:
-        hits.extend([word] * (text or "").count(word))
+        hits.extend([word] * target.count(word))
     for char in ONE_CHAR_ACTIONS:
-        hits.extend([char] * (text or "").count(char))
+        hits.extend([char] * target.count(char))
+    if len(hits) < 8:
+        # 叙述太短（整章几乎都是对白）时退回全文取样：宁可给个粗略值，也别报 0 让人误解成「极差」
+        target = text or ""
+        hits = []
+        for word in TWO_CHAR_ACTIONS:
+            hits.extend([word] * target.count(word))
+        for char in ONE_CHAR_ACTIONS:
+            hits.extend([char] * target.count(char))
     if len(hits) < 8:
         return 0.0
     return round(len(set(hits)) / len(hits), 3)
@@ -797,6 +834,8 @@ def measure(text: str, *, known_texts: list[str] | None = None) -> StyleMetrics:
     subject_openers = sum(1 for opener in openers if opener.startswith(SUBJECT_OPENERS))
 
     used_punctuation = {mark for mark in PUNCTUATION_SET if mark in content}
+    narration_paragraphs = [p for p in paragraphs if not DIALOGUE_RE.search(p)]
+    short_narration = sum(1 for p in narration_paragraphs if count_words(p) <= 8)
     short_paragraphs = sum(1 for p in paragraphs if count_words(p) <= 8)
     dash_ellipsis = content.count("——") + content.count("…")
     colloquial = sum(content.count(marker) for marker in COLLOQUIAL_MARKERS)
@@ -870,6 +909,10 @@ def measure(text: str, *, known_texts: list[str] | None = None) -> StyleMetrics:
         novel_bigram_ratio=novel_bigram_ratio_value,
         novel_char_ratio=novel_char_ratio_value,
         avg_paragraph_chars=round(chars / len(paragraphs), 1) if paragraphs else 0.0,
+        short_narration_ratio=round(short_narration / len(narration_paragraphs), 3)
+        if narration_paragraphs
+        else 0.0,
+        portentous_per_1k=_per_1k(sum(_hits(content, PORTENTOUS_MARKERS).values()), chars),
         summary_per_1k=_per_1k(summary_total, chars),
         elevation_per_1k=_per_1k(elevation_total, chars),
         transition_per_1k=_per_1k(transition_total, chars),
@@ -1394,30 +1437,54 @@ def _advancement_issues(
             )
         )
 
-    # 段落粒度：一句一段堆多了就是碎片流（读者会觉得「意识流」），
-    # 实测正常网文单句成段占 3%~13%，碎片流会到 25% 以上。
-    _low, high, reference = bounds("short_paragraph_ratio")
-    if metrics.short_paragraph_ratio > high:
+    # 段落粒度：一句一段堆多了就是碎片流（读者会觉得「意识流」），    # 实测正常网文单句成段占 3%~13%，碎片流会到 25% 以上。
+    _low, high, reference = bounds("short_narration_ratio")
+    if metrics.short_narration_ratio > high:
         short_paragraphs = [
-            p.strip() for p in text.split("\n") if p.strip() and count_words(p.strip()) <= 8
+            p.strip()
+            for p in text.split("\n")
+            if p.strip() and count_words(p.strip()) <= 8 and not DIALOGUE_RE.search(p)
         ]
         issues.append(
             StyleIssue(
                 code="FRAGMENTED_PARAGRAPHS",
                 level="warning",
-                metric="short_paragraph_ratio",
+                metric="short_narration_ratio",
                 message=(
-                    f"段落太碎：单句成段的段落占 {round(metrics.short_paragraph_ratio * 100)}%"
+                    f"叙述太碎：非对白段落里单句成段的占 {round(metrics.short_narration_ratio * 100)}%"
                     f"（{detail(reference)}，上限 {round(high * 100)}%），"
                     f"全篇 {len([p for p in text.split(chr(10)) if p.strip()])} 段、"
                     f"平均每段 {metrics.avg_paragraph_chars} 字"
                 ),
-                value=metrics.short_paragraph_ratio,
+                value=metrics.short_narration_ratio,
                 reference=reference,
                 excerpt="｜".join(short_paragraphs[:3])[:80],
                 suggestion=(
-                    "把同一个场景的句子并成一段（一段 2~5 句，约 60~150 字）；"
-                    "单句成段是强调手法，一章用三五次就够，不该占四分之一"
+                    "把同一个场景的叙述并成一段（一段 2~5 句，约 60~150 字）；"
+                    "对白各自成段是正常的，叙述一句一段才是碎片流"
+                ),
+            )
+        )
+
+    # 文艺腔：这本书是热血、青春、休闲的路子，满篇「宿命／苍凉／唯有」会读成另一个人写的
+    _low, high, reference = bounds("portentous_per_1k")
+    if metrics.portentous_per_1k > high:
+        found = _hits(text, PORTENTOUS_MARKERS)
+        issues.append(
+            StyleIssue(
+                code="PORTENTOUS_TONE",
+                level="warning",
+                metric="portentous_per_1k",
+                message=(
+                    f"故作深沉：每千字 {metrics.portentous_per_1k} 处文艺腔用词"
+                    f"（{detail(reference)}，上限 {round(high, 1)}）"
+                ),
+                value=metrics.portentous_per_1k,
+                reference=reference,
+                excerpt="、".join(list(found)[:6]),
+                suggestion=(
+                    "把「宿命」换成人正在做的事，把「苍凉」换成具体的天色或风声；"
+                    "热血青春的路子不需要这些词撑着"
                 ),
             )
         )

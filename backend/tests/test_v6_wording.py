@@ -292,6 +292,39 @@ FRAGMENTED_TEXT = (
 )
 
 
+#: 故意写得很「深沉」的样稿：这本书定的是热血青春休闲的路子，这类词密起来就跑味了。
+PORTENTOUS_TEXT = (
+    "他凝视着远方，眼神深邃而幽深。宿命像一张看不见的网，冥冥之中注定了一切。\n\n"
+    "沉默了很久，他终于恍然。那是不可名状的苍凉，说不清道不明，唯有寂寥。\n\n"
+    "许久无言。心底涌起一丝怅然与惘然，仿佛所有的落寞都在这一刻汇聚，意味深长。\n\n"
+    "他忽然明白：命运的齿轮早已转动，而他能做的，只是沉默良久，仰望苍穹。\n\n"
+    "夜色里有一种无形的沉重，让他若有所思，久久不语。\n\n"
+    "他抬头望着那片深邃的苍穹，眼底映着无法言说的茫然与怅然；那一刻的落寞，"
+    "像是被命运轻轻按在肩上，说不清，也道不明。他忽然明白，有些东西从一开始就已经注定，"
+    "唯有沉默良久，才配得上这份苍凉与寂寥。\n"
+)
+
+
+def test_portentous_tone_is_flagged():
+    """故作深沉要被点名：实测正常网文 0 处/千字，故意深沉能到 100+。"""
+    metrics = style_service.measure(PORTENTOUS_TEXT)
+    assert metrics.portentous_per_1k > 3.0
+    report = style_service.review_text(PORTENTOUS_TEXT, min_chars=100)
+    issue = next(i for i in report["issues"] if i["code"] == "PORTENTOUS_TONE")
+    assert issue["level"] == "warning"
+    assert issue["excerpt"], "要点出具体是哪几个词"
+    assert "热血" in issue["suggestion"]
+
+
+def test_plain_narrative_is_not_flagged_as_portentous(session, novel, chapters):
+    """热血／平实的叙述不该被误伤（示例书 20 章实测 0 处/千字）。"""
+    for chapter in list(chapters.values())[:5]:
+        metrics = style_service.measure(chapter.content or "")
+        assert metrics.portentous_per_1k <= 3.0
+        codes = {issue["code"] for issue in style_service.review_text(chapter.content or "", min_chars=300)["issues"]}
+        assert "PORTENTOUS_TONE" not in codes
+
+
 def test_fragmented_paragraphs_are_flagged():
     """一句一段堆成碎片流（读者会觉得「意识流」）要被点名。"""
     metrics = style_service.measure(FRAGMENTED_TEXT)
