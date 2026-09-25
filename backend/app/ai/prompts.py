@@ -125,6 +125,8 @@ WRITE_USER = """【本章目标】{goals}
 【章号】{chapter_number}
 【字数要求】{target_words} 字左右（可上下浮动两成，不要写成明显超出这个规模的长篇）
 
+{novel_context}
+
 【已检索到的 Canon（写作前必读）】
 {canon_facts}
 
@@ -173,6 +175,8 @@ PLAN_SYSTEM = """你是中文长篇小说的章节规划师，为 NovelOS 规划
 
 PLAN_USER = """【规划起点】从第{from_chapter}章开始，共规划 {count} 章
 【作者要求】{steer}
+
+{novel_context}
 
 【截至目前的 Canon（第N章时有效）】
 {canon_facts}
@@ -288,6 +292,8 @@ REALIZE_USER = """【作者的意图（他想要什么）】
 【拟放置的章号】第{chapter_number}章
 【目标字数】{target_words} 字左右（碎片很少时写少一点也完全可以，不要靠注水凑字数）
 【作者要求原样保留的原话】{keep_original}
+
+{novel_context}
 
 【作者的想法碎片（唯一创作源）】
 {fragment_block}

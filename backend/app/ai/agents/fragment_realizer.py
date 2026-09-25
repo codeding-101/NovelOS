@@ -22,7 +22,7 @@ from app.ai import prompts
 from app.ai.base import AIProvider, AIRequest, AIResponseFormatError
 from app.models import Chapter, Character, Fragment, Novel
 from app.schemas import FragmentPassage, FragmentRealization, FragmentRealizeRequest
-from app.services import fragment_service, query_service, style_service, text_rules
+from app.services import fragment_service, novel_service, query_service, style_service, text_rules
 from app.timeutil import count_words
 
 MIN_QUOTE_CHARS = 4
@@ -119,6 +119,9 @@ class FragmentRealizer:
             chapter_number=request.chapter_number or (context["frontier"] or 0) + 1,
             target_words=request.target_words,
             keep_original="、".join(request.must_keep) or "（无）",
+            novel_context=novel_service.novel_context(novel)
+            if novel_service.has_book_setting(novel)
+            else "（这本书还没有填简介/世界观/大纲：作者可以在「总览」里补上，之后成文会按它来落笔）",
             canon_facts="\n".join(
                 f"{fact['subject']} {fact['predicate']} {fact['object']}（第{fact['source_chapter']}章起）"
                 for fact in context["canon_facts"]

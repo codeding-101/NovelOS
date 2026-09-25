@@ -5,6 +5,8 @@ export interface Novel {
   synopsis: string;
   genre: string;
   worldview: string;
+  /** 全书大纲：主线、分卷、人物弧线、结局走向。会进规划与写作的提示词。 */
+  outline: string;
   author: string;
   target_word_count: number;
   word_count: number;

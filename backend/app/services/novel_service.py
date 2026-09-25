@@ -42,6 +42,41 @@ def unique_slug(session: Session, base: str) -> str:
     return slug
 
 
+def has_book_setting(novel: Novel) -> bool:
+    """作者有没有写过简介／世界观／大纲（书名与进度不算）。"""
+    return any(
+        (value or "").strip() for value in (novel.synopsis, novel.worldview, novel.outline)
+    )
+
+
+def novel_context(novel: Novel) -> str:
+    """把这本书的设定与大纲渲染成一段可放进提示词的上下文。
+
+    规划、写作、碎片成文都要用它：作者写在这里的东西必须真的被模型读到，
+    否则「重新选材、重编大纲」就只是存在数据库里的文字。
+    """
+    lines: list[str] = []
+    header = novel.title or ""
+    meta = [item for item in (novel.genre, novel.author) if item]
+    if meta:
+        header = f"{header}（{'，'.join(meta)}）" if header else "，".join(meta)
+    if header:
+        lines.append(f"书名：{header}")
+    if novel.word_count or novel.target_word_count:
+        lines.append(f"进度：{novel.word_count} / {novel.target_word_count} 字")
+    for label, value in (
+        ("简介", novel.synopsis),
+        ("世界观", novel.worldview),
+        ("全书大纲", novel.outline),
+    ):
+        text = (value or "").strip()
+        if text:
+            lines.append(f"{label}：\n{text}")
+    if not lines:
+        return ""
+    return "【本书设定（写作与规划必须服从）】\n" + "\n".join(lines)
+
+
 def recount(session: Session, novel: Novel) -> Novel:
     word_count = session.scalar(
         select(func.coalesce(func.sum(Chapter.word_count), 0)).where(Chapter.novel_id == novel.id)

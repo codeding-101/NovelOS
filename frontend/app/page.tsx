@@ -432,6 +432,7 @@ export default function Page() {
       {novel && (
         <KnowledgePanel
           novelId={novel.id}
+          novel={novel}
           bible={bible}
           dashboard={dashboard}
           provider={provider}
@@ -440,6 +441,10 @@ export default function Page() {
           fragmentsVersion={fragmentsVersion}
           onFragmentsChanged={noteFragmentsChanged}
           onRefresh={() => refreshNovelData(novel)}
+          onNovelSaved={(updated) => {
+            setNovel(updated);
+            setNovels((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+          }}
           setStatus={setStatus}
           setError={setError}
         />

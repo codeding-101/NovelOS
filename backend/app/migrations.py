@@ -24,6 +24,10 @@ ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
         # V0.5：作者锁定文风后按更严的窗口比对（旧库默认未锁定）
         ("locked", "INTEGER NOT NULL DEFAULT 0"),
     ],
+    "novels": [
+        # V0.7：全书大纲（旧库默认空字符串，行为与之前一致）
+        ("outline", "TEXT DEFAULT ''"),
+    ],
 }
 
 SCHEMA_VERSION = "0.5"

@@ -38,6 +38,7 @@ class NovelCreate(BaseModel):
     synopsis: str = ""
     genre: str = ""
     worldview: str = ""
+    outline: str = ""
     author: str = ""
     target_word_count: int = Field(default=1_000_000, ge=0, le=20_000_000)
     slug: str | None = Field(default=None, max_length=120)
@@ -48,6 +49,7 @@ class NovelUpdate(BaseModel):
     synopsis: str | None = None
     genre: str | None = None
     worldview: str | None = None
+    outline: str | None = None
     author: str | None = None
     target_word_count: int | None = Field(default=None, ge=0, le=20_000_000)
 
@@ -59,6 +61,7 @@ class NovelOut(ORMModel):
     synopsis: str
     genre: str
     worldview: str
+    outline: str = ""
     author: str
     target_word_count: int
     word_count: int

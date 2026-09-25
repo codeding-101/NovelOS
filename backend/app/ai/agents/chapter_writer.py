@@ -32,7 +32,7 @@ from app.schemas import (
     WriteChapterRequest,
     WriteChapterResponse,
 )
-from app.services import chapter_service, query_service, retrieval_service, style_service
+from app.services import chapter_service, novel_service, query_service, retrieval_service, style_service
 from app.timeutil import count_words
 
 _TITLE_LINE_RE = re.compile(r"^#+\s*(.*)$")
@@ -177,6 +177,13 @@ class ChapterWriter:
         if bundle.world_rules:
             warnings.append(f"写作提示里带上了 {len(bundle.world_rules)} 条世界观规则（不得违背）")
 
+        novel_context = novel_service.novel_context(novel)
+        has_setting = novel_service.has_book_setting(novel)
+        if has_setting:
+            warnings.append("写作提示里带上了本书的简介／世界观／大纲")
+        else:
+            warnings.append("本书还没有简介、世界观或大纲，规划与写作只能靠人物与 Canon 推断")
+
         prompt = prompts.WRITE_USER.format(
             goals=request.goals,
             must_include="、".join(request.must_include) or "（无）",
@@ -184,6 +191,9 @@ class ChapterWriter:
             characters="、".join(request.characters) or "（未指定）",
             chapter_number=target_number,
             target_words=request.target_words,
+            novel_context=novel_context
+            if has_setting
+            else "（这本书还没有填简介/世界观/大纲：作者可以在「总览」里补上，之后每一次规划与写作都会带上）",
             canon_facts="\n".join(
                 f"{fact['subject']} {fact['predicate']} {fact['object']}"
                 f"（来源第{fact['source_chapter']}章）"
@@ -249,6 +259,7 @@ class ChapterWriter:
                 "world_rules": bundle.world_rules,
                 "style_lock": style_lock,
                 "locked_style": locked,
+                "novel_context": novel_context,
             },
             temperature=0.8,
             max_tokens=8192,

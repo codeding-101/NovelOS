@@ -107,6 +107,8 @@ class Novel(Base):
     synopsis: Mapped[str] = mapped_column(Text, default="")
     genre: Mapped[str] = mapped_column(String(64), default="")
     worldview: Mapped[str] = mapped_column(Text, default="")
+    #: 全书大纲（主线、分卷、人物弧线、结局走向）：作者写在这里的东西，规划与写作必须能看到
+    outline: Mapped[str] = mapped_column(Text, default="", server_default="")
     author: Mapped[str] = mapped_column(String(64), default="")
     target_word_count: Mapped[int] = mapped_column(Integer, default=1_000_000)
     word_count: Mapped[int] = mapped_column(Integer, default=0)

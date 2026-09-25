@@ -16,7 +16,7 @@ from app.ai import prompts
 from app.ai.base import AIProvider, AIRequest, AIResponseFormatError
 from app.models import Chapter, ChapterPlan, Novel
 from app.schemas import ChapterPlanResult
-from app.services import foreshadow_service, fragment_service, query_service
+from app.services import foreshadow_service, fragment_service, novel_service, query_service
 
 PLAN_SCHEMA = ChapterPlanResult.model_json_schema()
 
@@ -131,6 +131,9 @@ class PlannerAgent:
             from_chapter=start,
             count=count,
             steer=steer or "（无额外要求）",
+            novel_context=novel_service.novel_context(novel)
+            if novel_service.has_book_setting(novel)
+            else "（这本书还没有填简介/世界观/大纲：作者可以在「总览」里补上，之后规划会按它来安排章节）",
             canon_facts="\n".join(
                 f"{fact['subject']} {fact['predicate']} {fact['object']}"
                 f"（第{fact['source_chapter']}章起）"

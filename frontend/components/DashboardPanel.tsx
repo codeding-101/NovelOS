@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
-import type { Dashboard, RetrievalResult, SweepMode, SweepRun } from "@/lib/types";
+import type { Dashboard, Novel, RetrievalResult, SweepMode, SweepRun } from "@/lib/types";
 
 interface Props {
   novelId: string;
   provider: string;
   dashboard: Dashboard | null;
+  novel: Novel | null;
+  onNovelSaved: (novel: Novel) => void;
   onRefresh: () => Promise<void>;
   setStatus: (message: string) => void;
   setError: (message: string) => void;
@@ -36,7 +38,16 @@ const FRAGMENT_KIND_LABELS: Record<string, string> = {
   OTHER: "其他",
 };
 
-export function DashboardPanel({ novelId, provider, dashboard, onRefresh, setStatus, setError }: Props) {
+export function DashboardPanel({
+  novelId,
+  provider,
+  dashboard,
+  novel,
+  onNovelSaved,
+  onRefresh,
+  setStatus,
+  setError,
+}: Props) {
   const [running, setRunning] = useState<SweepMode | null>(null);
   const [run, setRun] = useState<SweepRun | null>(null);
   const [reindexLog, setReindexLog] = useState("");
@@ -45,6 +56,44 @@ export function DashboardPanel({ novelId, provider, dashboard, onRefresh, setSta
   const [useVector, setUseVector] = useState(true);
   const [searching, setSearching] = useState(false);
   const [retrieval, setRetrieval] = useState<RetrievalResult | null>(null);
+  const [setting, setSetting] = useState<{ genre: string; synopsis: string; worldview: string; outline: string } | null>(null);
+  const [savingSetting, setSavingSetting] = useState(false);
+
+  const currentSetting = {
+    genre: novel?.genre ?? "",
+    synopsis: novel?.synopsis ?? "",
+    worldview: novel?.worldview ?? "",
+    outline: novel?.outline ?? "",
+  };
+  const settingDraft = setting ?? currentSetting;
+  const settingDirty =
+    setting !== null &&
+    (setting.genre !== currentSetting.genre ||
+      setting.synopsis !== currentSetting.synopsis ||
+      setting.worldview !== currentSetting.worldview ||
+      setting.outline !== currentSetting.outline);
+
+  function editSetting(patch: Partial<typeof currentSetting>) {
+    setSetting({ ...settingDraft, ...patch });
+  }
+
+  async function saveSetting() {
+    if (!setting) return;
+    setSavingSetting(true);
+    setError("");
+    try {
+      const updated = await api.updateNovel(novelId, setting);
+      onNovelSaved(updated);
+      setSetting(null);
+      setStatus(
+        "本书设定已保存：之后的规划、写作、碎片成文都会带上它（之前写过的章节不受影响）",
+      );
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingSetting(false);
+    }
+  }
 
   async function runSweep(mode: SweepMode) {
     setRunning(mode);
@@ -122,6 +171,60 @@ export function DashboardPanel({ novelId, provider, dashboard, onRefresh, setSta
 
   return (
     <div>
+      <div className="issue" style={{ marginBottom: 10 }}>
+        <div className="issue-title">本书设定与大纲</div>
+        <div className="hint" style={{ marginBottom: 6 }}>
+          写在这里的东西会进规划、写作与碎片成文的提示词。简介写这本书是什么，
+          世界观写规则与势力，全书大纲写主线、分卷与结局走向。
+        </div>
+        <div className="field-row" style={{ marginBottom: 6 }}>
+          <label>
+            类型
+            <input
+              value={settingDraft.genre}
+              placeholder="东方玄幻 / 都市异能 / 悬疑…"
+              onChange={(event) => editSetting({ genre: event.target.value })}
+            />
+          </label>
+        </div>
+        <label className="block">
+          简介
+          <textarea
+            rows={2}
+            value={settingDraft.synopsis}
+            placeholder="一两句话：谁、要什么、拦着他的是什么"
+            onChange={(event) => editSetting({ synopsis: event.target.value })}
+          />
+        </label>
+        <label className="block">
+          世界观
+          <textarea
+            rows={4}
+            value={settingDraft.worldview}
+            placeholder="力量体系、地理、势力、时代背景"
+            onChange={(event) => editSetting({ worldview: event.target.value })}
+          />
+        </label>
+        <label className="block">
+          全书大纲
+          <textarea
+            rows={6}
+            value={settingDraft.outline}
+            placeholder="主线走向、分卷安排、人物弧线、结局；也可以只写你目前想到的"
+            onChange={(event) => editSetting({ outline: event.target.value })}
+          />
+        </label>
+        <div className="field-row" style={{ marginTop: 6 }}>
+          <button className="primary" onClick={() => void saveSetting()} disabled={!settingDirty || savingSetting}>
+            {savingSetting ? "保存中…" : "保存本书设定"}
+          </button>
+          <button onClick={() => setSetting(null)} disabled={!settingDirty}>
+            撤销改动
+          </button>
+          {settingDirty && <span className="hint">有未保存的改动</span>}
+        </div>
+      </div>
+
       <div className="field-row">
         <button onClick={() => void runSweep("rules")} disabled={running !== null}>
           {running === "rules" ? "规则扫描中…" : "跑一遍规则扫描（快）"}

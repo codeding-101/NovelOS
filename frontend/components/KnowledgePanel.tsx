@@ -6,7 +6,7 @@ import { DashboardPanel } from "@/components/DashboardPanel";
 import { FragmentBoard } from "@/components/FragmentBoard";
 import { PlanPanel } from "@/components/PlanPanel";
 import { QualityPanel } from "@/components/QualityPanel";
-import type { AsOfState, AskResponse, Bible, CharacterState, Dashboard } from "@/lib/types";
+import type { AsOfState, AskResponse, Bible, CharacterState, Dashboard, Novel } from "@/lib/types";
 
 type TabKey =
   | "characters"
@@ -37,6 +37,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 interface Props {
   novelId: string;
+  novel: Novel | null;
   bible: Bible | null;
   dashboard: Dashboard | null;
   provider: string;
@@ -47,12 +48,15 @@ interface Props {
   fragmentsVersion: number;
   onFragmentsChanged: () => void;
   onRefresh: () => Promise<void>;
+  /** 本书设定保存后回填页面状态（顶部信息与各面板都读它）。 */
+  onNovelSaved: (novel: Novel) => void;
   setStatus: (message: string) => void;
   setError: (message: string) => void;
 }
 
 export function KnowledgePanel({
   novelId,
+  novel,
   bible,
   dashboard,
   provider,
@@ -61,6 +65,7 @@ export function KnowledgePanel({
   fragmentsVersion,
   onFragmentsChanged,
   onRefresh,
+  onNovelSaved,
   setStatus,
   setError,
 }: Props) {
@@ -164,6 +169,8 @@ export function KnowledgePanel({
             novelId={novelId}
             provider={provider}
             dashboard={dashboard}
+            novel={novel}
+            onNovelSaved={onNovelSaved}
             onRefresh={onRefresh}
             setStatus={setStatus}
             setError={setError}
