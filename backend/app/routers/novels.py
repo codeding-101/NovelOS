@@ -24,15 +24,9 @@ def list_novels(session: Session = Depends(get_session)) -> list[Novel]:
 
 @router.post("", response_model=NovelOut, status_code=status.HTTP_201_CREATED)
 def create_novel(payload: NovelCreate, session: Session = Depends(get_session)) -> Novel:
-    novel = Novel(
-        title=payload.title,
-        slug="",
-        synopsis=payload.synopsis,
-        genre=payload.genre,
-        worldview=payload.worldview,
-        author=payload.author,
-        target_word_count=payload.target_word_count,
-    )
+    # 直接照出入参落库（slug 单独算）：之前这里逐字段手写，结果 outline 与发布口径被静默丢掉，
+    # 建书时填的大纲看起来「保存成功」其实没了
+    novel = Novel(slug="", **payload.model_dump(exclude={"slug"}))
     session.add(novel)
     session.flush()
     base = payload.slug or novel_service.make_slug(payload.title, novel.id)

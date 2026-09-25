@@ -120,6 +120,30 @@ def test_seed_novel_setting_reaches_the_context(session, novel):
     assert novel.worldview[:12] in block
 
 
+def test_creating_a_novel_keeps_every_field(client):
+    """建书时给的字段必须全都落库：之前逐字段手写，outline 被静默丢过。"""
+    created = client.post(
+        "/api/novels",
+        json={
+            "title": "建书字段测试",
+            "synopsis": "一句简介",
+            "genre": "仙侠",
+            "worldview": "境界与势力",
+            "outline": "三卷：起、承、合",
+            "author": "作者",
+            "target_word_count": 800000,
+        },
+    ).json()
+    assert created["outline"] == "三卷：起、承、合"
+    assert created["genre"] == "仙侠" and created["worldview"] == "境界与势力"
+    assert created["synopsis"] == "一句简介" and created["author"] == "作者"
+    assert created["target_word_count"] == 800000
+    assert created["chapter_words_min"] == 2000 and created["daily_words_target"] == 4000
+
+    fetched = client.get(f"/api/novels/{created['id']}").json()
+    assert fetched["outline"] == "三卷：起、承、合", "重新读一遍也要在"
+
+
 def test_outline_is_editable_through_the_api(client):
     created = client.post("/api/novels", json={"title": "大纲接口测试"}).json()
     assert created["outline"] == ""
