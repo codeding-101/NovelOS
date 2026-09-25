@@ -9,6 +9,9 @@ name: novelos
 services:
   backend:
     build: ./backend
+    # 显式声明镜像名：CI 里先用 bake 构建（吃 GHA 层缓存），compose 起来时直接复用，
+    # 不会因为标签对不上而去 registry 拉一个不存在的镜像
+    image: novelos-backend
     environment:
       NOVELOS_DATA_DIR: /data
       NOVELOS_DB_PATH: /data/novelos.db
@@ -27,6 +30,7 @@ services:
 
   frontend:
     build: ./frontend
+    image: novelos-frontend
     environment:
       NOVELOS_BACKEND_URL: http://backend:8000
     ports:

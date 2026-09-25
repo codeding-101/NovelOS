@@ -1,0 +1,66 @@
+name: docker
+
+# 镜像构建与运行时冒烟测试。
+#
+# 为什么单独一个 workflow：tests.yml 只跑用例，验证不了「部署起来能不能用」。
+# 之前 frontend/Dockerfile 里 COPY 一个不存在的 public/ 目录，就是这类问题 ——
+# 本机没装 Docker 时，只能等到第一次部署才发现。这里让 CI 提前发现。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 校验 compose 文件
+        run: docker compose config --quiet
+
+      - name: 构建镜像（复用 GHA 层缓存）
+        uses: docker/bake-action@v5
+        with:
+          files: docker-compose.yml
+          load: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+
+      - name: 起服务并等健康检查通过
+        run: |
+          # 明确走离线提供者：CI 上没有密钥，也不该在流水线里调用外部模型
+          printf 'NOVELOS_AI_PROVIDER=offline\n' > .env
+          docker compose up -d --wait --wait-timeout 240
+          docker compose ps
+
+      - name: 冒烟测试（后端 + 前端 + 前端转发）
+        run: |
+          set -euo pipefail
+          echo "—— 后端直连 ——"
+          curl -fsS http://localhost:8000/api/health | tee /tmp/health.json
+          grep -q '"status":"ok"' /tmp/health.json
+          echo "—— 前端首页 ——"
+          curl -fsS http://localhost:3000/ | grep -q NovelOS
+          echo "—— 经前端转发到后端（验证构建期写死的 backend:8000）——"
+          curl -fsS http://localhost:3000/api/health | grep -q '"status":"ok"'
+          echo "—— 写路径：建一本书 ——"
+          curl -fsS -X POST http://localhost:8000/api/novels \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"CI 冒烟"}' | grep -q '"id"'
+          echo "—— 数据落到宿主机卷 ——"
+          test -f data/novelos.db && ls -la data | head -5
+
+      - name: 失败时打印容器日志
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: 收尾
+        if: always()
+        run: docker compose down -v
