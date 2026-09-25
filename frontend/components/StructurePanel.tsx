@@ -397,17 +397,20 @@ export function StructurePanel({
         ) : (
           windows.map((window) => {
             const belowFloor = window.avg_hook < hookFloor;
+            // 张弛度判决：「一直紧」「一直松」与「缺钩子」用同级醒目样式
+            const tensionOff = /一直紧|一直松/.test(window.verdict || "");
+            const flagged = belowFloor || tensionOff;
             return (
               <div
                 key={`window-${window.start_chapter}-${window.end_chapter}`}
                 className="item-row"
                 style={{
-                  ...(belowFloor ? { borderLeft: "3px solid var(--warning)" } : {}),
-                  ...(belowFloor && window.verdict ? { background: "var(--warning-soft)" } : {}),
+                  ...(flagged ? { borderLeft: "3px solid var(--warning)" } : {}),
+                  ...(flagged && window.verdict ? { background: "var(--warning-soft)" } : {}),
                 }}
               >
                 <div className="row-head">
-                  <span className={`badge ${belowFloor ? "warning" : "ok"}`}>
+                  <span className={`badge ${flagged ? "warning" : "ok"}`}>
                     {rangeLabel(window.start_chapter, window.end_chapter)}
                   </span>
                   <b>钩子 {fixed(window.avg_hook, 2)}</b>
@@ -426,9 +429,11 @@ export function StructurePanel({
       <div className="hint">
         阈值是经验下限：章末钩子 ≥ {fixed(floors.hook_floor, 2)}、推进密度 ≥{" "}
         {fixed(floors.advancement_floor, 1)}/千字、注水比例 ≤ {percent(floors.filler_ceiling)}；
+        冲突信号（窗口均值）要落在 {fixed(floors.conflict_floor, 1)}–{fixed(floors.conflict_ceiling, 1)}
+        /千字之间：高于上限是「一直紧」、低于下限是「一直松」，两头都算这一段的节奏出了问题。
         连续不达标会被收成「连续弱区」，也就是读者容易掉队的地方。判断依据是平台点名的「结构失常」
-        「大段内容未能推动情节发展」，以及优质内容要求的「主线清晰、节奏合理、剧情层层递进」
-        「每 3~5 章一个小高潮」。
+        「大段内容未能推动情节发展」，优质内容要求的「主线清晰、节奏合理、剧情层层递进」
+        「每 3~5 章一个小高潮」，以及平台课《拒绝流水账》的「节奏要张弛有度，一直紧读者累，一直松读者走」。
       </div>
     </div>
   );

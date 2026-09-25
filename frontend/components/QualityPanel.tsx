@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import {
   BaselineMetricTable,
@@ -16,6 +16,7 @@ import type {
   Commitment,
   CommitmentKind,
   CommitmentStatus,
+  CraftRule,
   InvariantIssue,
   InvariantReport,
   PublishCheck,
@@ -214,8 +215,35 @@ const PUBLISH_LEVEL_ORDER = ["error", "warning", "info"];
 /** 开篇与章末直接关系到完读率，从清单里挑出来单独排一份。 */
 const OPENING_HOOK_CODES = ["OPENING_SLOW", "OPENING_INFO_DUMP", "ENDING_NO_HOOK"];
 
-/** 一条发布前检查项：结论 + 原文片段 + 修法。 */
-function PublishCheckRow({ item }: { item: PublishCheckItem }) {
+/** 检查项的出处标记：点开看这条依据哪条规则、原文怎么说的。规则库没读到就只显示编号。 */
+function CraftRuleMarker({ code, rule }: { code: string; rule?: CraftRule }) {
+  return (
+    <details style={{ marginTop: 2 }}>
+      <summary>
+        <span className="badge info">出处</span> 依据：{rule?.summary || code}
+      </summary>
+      <div className="payload">
+        {rule ? (
+          <>
+            <div>
+              {rule.code}｜{rule.summary}
+            </div>
+            <div>出处：{rule.source}</div>
+            {rule.detail ? <div>{rule.detail}</div> : null}
+            {rule.advice ? <div>做法：{rule.advice}</div> : null}
+          </>
+        ) : (
+          <div>
+            规则编号 {code}（规则知识库还没读到，稍后可在本块底部「这些检查的依据」里核对原文）。
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+/** 一条发布前检查项：结论 + 依据出处 + 原文片段 + 修法。 */
+function PublishCheckRow({ item, rule }: { item: PublishCheckItem; rule?: CraftRule }) {
   const level = item.level || "info";
   return (
     <div className="item-row">
@@ -226,6 +254,7 @@ function PublishCheckRow({ item }: { item: PublishCheckItem }) {
         <span className="hint">{item.code}</span>
         <b>{item.message}</b>
       </div>
+      {item.rule ? <CraftRuleMarker code={item.rule} rule={rule} /> : null}
       {item.excerpt ? <div className="payload">原文：{item.excerpt}</div> : null}
       {item.category ? (
         <div className="payload">
@@ -290,6 +319,10 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
   const [publishChapter, setPublishChapter] = useState("");
   const [publishChecking, setPublishChecking] = useState(false);
   const [publishReport, setPublishReport] = useState<PublishCheck | null>(null);
+  // 写作规则知识库：面板首次打开时拉一次，用来给检查项标注出处
+  const [craftRules, setCraftRules] = useState<CraftRule[] | null>(null);
+  const [craftRulesLoading, setCraftRulesLoading] = useState(false);
+  const craftRulesRequested = useRef(false);
 
   const loadBaseline = useCallback(async () => {
     setBaselineLoading(true);
@@ -351,6 +384,23 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
     }
   }, [novelId, setError]);
 
+  /**
+   * 写作规则知识库：只在面板首次打开时拉一次并缓存。拉不到就退回只显示规则编号，
+   * 不弹错误、也不影响发布检查本身。
+   */
+  const loadCraftRules = useCallback(async () => {
+    if (craftRulesRequested.current) return;
+    craftRulesRequested.current = true;
+    setCraftRulesLoading(true);
+    try {
+      setCraftRules(await api.craftRules());
+    } catch {
+      setCraftRules(null);
+    } finally {
+      setCraftRulesLoading(false);
+    }
+  }, []);
+
   const loadCommitments = useCallback(
     async (filter: CommitmentFilter) => {
       setCommitmentsLoading(true);
@@ -372,7 +422,8 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
     void loadInvariants();
     void loadClaimHistory();
     void loadDrift();
-  }, [loadBaseline, loadVoice, loadInvariants, loadClaimHistory, loadDrift]);
+    void loadCraftRules();
+  }, [loadBaseline, loadVoice, loadInvariants, loadClaimHistory, loadDrift, loadCraftRules]);
 
   useEffect(() => {
     void loadCommitments(commitmentFilter);
@@ -614,6 +665,11 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
   })).filter((group) => group.items.length > 0);
   const publishWords = publishReport?.words_per_chapter || [];
   const publishDaily = publishReport?.daily_words_targets || [];
+  // 规则编号 → 规则；知识库还没读到或拉取失败时为空表，此时检查项只显示编号
+  const ruleByCode = new Map<string, CraftRule>();
+  (craftRules ?? []).forEach((rule) => ruleByCode.set(rule.code, rule));
+  const ruleFor = (item: PublishCheckItem) =>
+    item.rule ? ruleByCode.get(item.rule) : undefined;
 
   return (
     <div>
@@ -1322,7 +1378,11 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
                   开篇与章末（{publishOpening.length} 项，直接影响完读率）
                 </div>
                 {publishOpening.map((item, index) => (
-                  <PublishCheckRow key={`opening-${item.code}-${index}`} item={item} />
+                  <PublishCheckRow
+                    key={`opening-${item.code}-${index}`}
+                    item={item}
+                    rule={ruleFor(item)}
+                  />
                 ))}
               </div>
             )}
@@ -1369,7 +1429,11 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
                     {PUBLISH_LEVEL_LABELS[group.level] ?? group.level}（{group.items.length}）
                   </div>
                   {group.items.map((item, index) => (
-                    <PublishCheckRow key={`${group.level}-${item.code}-${index}`} item={item} />
+                    <PublishCheckRow
+                      key={`${group.level}-${item.code}-${index}`}
+                      item={item}
+                      rule={ruleFor(item)}
+                    />
                   ))}
                 </div>
               ))}
@@ -1377,7 +1441,7 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
                 <details style={{ marginTop: 6 }}>
                   <summary>已通过的检查（{publishOk.length}）</summary>
                   {publishOk.map((item, index) => (
-                    <PublishCheckRow key={`ok-${item.code}-${index}`} item={item} />
+                    <PublishCheckRow key={`ok-${item.code}-${index}`} item={item} rule={ruleFor(item)} />
                   ))}
                 </details>
               )}
@@ -1407,6 +1471,29 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
             </div>
           </>
         )}
+
+        <details className="issue info" style={{ marginTop: 8, marginBottom: 0 }}>
+          <summary>
+            这些检查的依据（写作规则知识库 · {craftRules?.length ?? 0} 条）
+          </summary>
+          <div className="hint" style={{ marginTop: 4 }}>
+            每条规则都标了出处：可以回去核对平台课程的原文，而不是只听一句经验阈值。
+          </div>
+          {craftRulesLoading && <div className="hint">正在读取规则知识库…</div>}
+          {!craftRulesLoading && (craftRules?.length ?? 0) === 0 && (
+            <div className="hint">这次没读到规则知识库（不影响上面的检查结果）。</div>
+          )}
+          {(craftRules ?? []).map((rule) => (
+            <div key={rule.code} className="item-row">
+              <div className="row-head">
+                <span className="badge">{rule.code}</span>
+                <b>{rule.summary}</b>
+              </div>
+              <div className="payload">出处：{rule.source}</div>
+              {rule.advice ? <div className="payload">做法：{rule.advice}</div> : null}
+            </div>
+          ))}
+        </details>
       </div>
     </div>
   );

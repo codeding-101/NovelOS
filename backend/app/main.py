@@ -31,7 +31,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="NovelOS V0.6",
+    title="NovelOS V0.7",
     description=(
         "中文长篇小说 AI 辅助创作系统：长期记忆 + Canon 一致性守卫。"
         "AI 只能提出 PROPOSED 事实，只有作者确认后才升级为 CANON。"
@@ -64,13 +64,14 @@ app.include_router(fragments.novel_router)
 app.include_router(fragments.item_router)
 app.include_router(publish.novel_router)
 app.include_router(publish.chapter_router)
+app.include_router(publish.rules_router)
 app.include_router(ai.router)
 
 
 @app.get("/", include_in_schema=False)
 def index() -> dict:
     return {
-        "name": "NovelOS V0.6",
+        "name": "NovelOS V0.7",
         "version": __version__,
         "docs": "/docs",
         "health": "/api/health",

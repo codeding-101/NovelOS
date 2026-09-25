@@ -16,6 +16,7 @@ import type {
   CommitmentStatus,
   CompletionReport,
   ContinuityReport,
+  CraftRule,
   Dashboard,
   EmbeddingStats,
   EmotionPromptRequest,
@@ -471,4 +472,8 @@ export const api = {
   // ------------------------------------------------------------------ V0.7 结构视图
   /** 全书结构视图：逐章信号 + 连续弱区 + 每 5 章的节奏窗口（只读，不落库）。 */
   structure: (novelId: string) => request<StructureView>(`/novels/${novelId}/structure`),
+
+  // ------------------------------------------------------------------ 写作规则知识库
+  /** 全部写作规则与出处；路径不在 /novels/{id} 下。 */
+  craftRules: () => request<CraftRule[]>("/craft-rules"),
 };

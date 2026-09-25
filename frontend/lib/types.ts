@@ -1061,6 +1061,19 @@ export interface ClaimReport {
   created_at?: string | null;
 }
 
+// --------------------------------------------------------------------------- 写作规则知识库
+/** 一条写作规则：编号、一句话说法、出处（平台课程原文）、可执行的做法与详细复述。 */
+export interface CraftRule {
+  /** 规则编号，如 FIRST_PAGE。 */
+  code: string;
+  summary: string;
+  /** 出处，如「《如何稳定剧情，让读者追更不停？》· 番茄作家课堂」。 */
+  source: string;
+  advice: string;
+  /** 原文要点的详细复述。 */
+  detail: string;
+}
+
 // --------------------------------------------------------------------------- V0.7 发布前准备
 /** 一条发布前检查项；level=error 的是阻断项，归零才算可以发。 */
 export interface PublishCheckItem {
@@ -1068,6 +1081,8 @@ export interface PublishCheckItem {
   level: "error" | "warning" | "info" | "ok";
   message: string;
   fix: string;
+  /** 这一条依据的规则编号（写作规则知识库的 code）；没有依据时后端不带这项。 */
+  rule?: string;
   /** 命中的原文片段（风险词与格式问题会带）。 */
   excerpt?: string;
   /** 度量值（字数、钩子分等）。 */
@@ -1171,7 +1186,10 @@ export interface StructureView {
   chapter_count: number;
   word_count: number;
   target_word_count: number;
-  /** 经验下限：hook_floor / advancement_floor / filler_ceiling / pace_window。 */
+  /**
+   * 阈值：hook_floor / advancement_floor / filler_ceiling / pace_window，
+   * 以及冲突信号上下限 conflict_ceiling（一直紧）/ conflict_floor（一直松）。
+   */
   floors: Record<string, number>;
   chapters: StructureChapter[];
   weak_runs: StructureWeakRun[];

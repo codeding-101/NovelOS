@@ -12,10 +12,19 @@ from sqlalchemy.orm import Session
 from app.database import get_session
 from app.models import Chapter, Novel
 from app.schemas import PublishCheckOut, PublishCheckRequest, StructureViewOut
-from app.services import publish_service, structure_service, style_service
+from app.services import craft_rules, publish_service, structure_service, style_service
 
 novel_router = APIRouter(prefix="/api/novels", tags=["发布"])
 chapter_router = APIRouter(prefix="/api/chapters", tags=["发布"])
+
+#: 写作规则清单不挂在某一本书下面
+rules_router = APIRouter(prefix="/api", tags=["发布"])
+
+
+@rules_router.get("/craft-rules")
+def craft_rules_catalog() -> list[dict[str, str]]:
+    """列出检查所依据的写作规则与出处（平台作家课堂原文）。"""
+    return craft_rules.catalog()
 
 
 def _novel(session: Session, novel_id: str) -> Novel:

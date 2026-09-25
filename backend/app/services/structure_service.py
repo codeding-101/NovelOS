@@ -25,11 +25,17 @@ PACE_WINDOW = 5
 HOOK_FLOOR = 0.3
 ADVANCEMENT_FLOOR = 4.0
 FILLER_CEILING = 0.35
+#: 张弛度：平台课《拒绝流水账》要求「张弛有度」——一直紧读者累，一直松读者走。
+#: 用窗口内的冲突信号密度做代理：高于上限=一直紧，低于下限=一直松。
+CONFLICT_CEILING = 32.0
+CONFLICT_FLOOR = 8.0
 
 FLOORS = {
     "hook_floor": HOOK_FLOOR,
     "advancement_floor": ADVANCEMENT_FLOOR,
     "filler_ceiling": FILLER_CEILING,
+    "conflict_ceiling": CONFLICT_CEILING,
+    "conflict_floor": CONFLICT_FLOOR,
     "pace_window": PACE_WINDOW,
 }
 
@@ -181,6 +187,16 @@ def _pace_windows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             verdict = (
                 f"这一段是全书低谷：平均钩子 {round(hook, 2)}，比全书平均"
                 f"（{round(book_avg, 2)}）低 {round((1 - hook / book_avg) * 100)}%"
+            )
+        elif conflict > CONFLICT_CEILING:
+            verdict = (
+                f"这一段一直紧：平均冲突信号 {round(conflict, 1)}/千字，"
+                "中间没有喘息段，读者会累（平台课：节奏要张弛有度）"
+            )
+        elif conflict < CONFLICT_FLOOR:
+            verdict = (
+                f"这一段一直松：平均冲突信号只有 {round(conflict, 1)}/千字，"
+                "缺少张力，读者容易放下（平台课：节奏要张弛有度）"
             )
         else:
             verdict = "这一段有起伏"

@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models import Chapter, Novel
-from app.services import style_service
+from app.services import craft_rules, style_service
 from app.timeutil import count_words, split_sentences
 
 #: 番茄免费小说按章发布的常见长度区间与每日更新目标（平台福利口径：每日 4000 或 6000 字）
@@ -123,6 +123,18 @@ def _issue(code: str, level: str, message: str, fix: str = "", **extra: Any) -> 
     return {"code": code, "level": level, "message": message, "fix": fix, **extra}
 
 
+def _last_sentence_of(text: str) -> str:
+    """正文最后一句（有实际内容的那句）。
+
+    分句器会把收尾的引号单独切成一段（「…？」+「”」），直接取末段会拿到一个引号，
+    于是凡是以对白收尾的章都会被误判成「没有钩子」。这里丢掉末尾没有汉字的碎片。
+    """
+    sentences = [item.strip() for item in split_sentences(text or "") if item.strip()]
+    while sentences and not re.search(r"[\u4e00-\u9fa5]", sentences[-1]):
+        sentences.pop()
+    return sentences[-1].strip("“”\"' \n") if sentences else ""
+
+
 def find_risk_words(text: str) -> list[dict[str, Any]]:
     """扫审核风险词，给出分类、上下文与建议。"""
     hits: list[dict[str, Any]] = []
@@ -205,10 +217,12 @@ def find_format_issues(
     return issues
 
 
-def opening_report(text: str, *, head_chars: int = 300) -> dict[str, Any]:
-    """开篇检查：平台明确要求「开篇能快速进入主线」。
+def opening_report(text: str, *, head_chars: int = craft_rules.FIRST_PAGE_CHARS) -> dict[str, Any]:
+    """开篇检查：按「第一页」的口径，而不是泛泛的前几百字。
 
-    只看前 300 字：有没有动作、对白、冲突信号；有没有把设定/心理大段倒出来。
+    平台的原话是「前三章很重要，但第一页更重要」（番茄按页阅读）。
+    所以这里看三件事：第一页有没有对白／动作／冲突信号；有没有把设定大段倒出来；
+    以及**第一页的最后一句**有没有留下让人翻页的钩子。
     """
     head = (text or "")[:head_chars]
     if not head.strip():
@@ -219,12 +233,13 @@ def opening_report(text: str, *, head_chars: int = 300) -> dict[str, Any]:
     action = style_service._has_story_action(head)
     conflict = any(marker in head for marker in style_service.CONFLICT_PATTERNS)
     slow = not (dialogue or action or conflict)
-    # 三种「一上来就交代」的写法：解释性叙述、定义式说明、抽象词堆砌
     dump = (
         metrics.exposition_per_1k >= 8
         or metrics.explaining_per_1k >= 12
         or metrics.abstract_per_1k >= 14
     )
+    last_sentence = _last_sentence_of(head)
+    tail = page_tail_hook(last_sentence)
     return {
         "available": True,
         "chars": len(head),
@@ -234,20 +249,71 @@ def opening_report(text: str, *, head_chars: int = 300) -> dict[str, Any]:
         "conflict": conflict,
         "slow_start": slow,
         "info_dump": dump,
+        "last_sentence": last_sentence[:60],
+        "tail_hook": tail["kind"],
+        "tail_hook_strong": tail["strong"],
         "explaining_per_1k": metrics.explaining_per_1k,
         "exposition_per_1k": metrics.exposition_per_1k,
         "abstract_per_1k": metrics.abstract_per_1k,
         "verdict": (
-            "开篇偏慢：前 300 字没有动作、对白或冲突信号，平台看重「开篇快速进入主线」"
+            "第一页偏慢：没有动作、对白或冲突信号，平台看重「开篇快速进入主线」"
             if slow
-            else "开篇有动作／对白／冲突信号"
+            else "第一页有动作／对白／冲突信号"
         ),
         "info_dump_verdict": (
-            "前 300 字定义式说明、解释性叙述或抽象词偏多，像在交代背景而不是进入故事"
+            "第一页定义式说明、解释性叙述或抽象词偏多，像在交代背景而不是进入故事"
             if dump
             else ""
         ),
     }
+
+
+#: 章末／页尾钩子的类型（依据平台课「章末留钩」的几种常见做法）
+HOOK_KINDS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "悬问": ("悬着的问题", ("？", "?", "吗", "呢", "什么", "为什么", "谁", "怎么办")),
+    "危机": ("危险或威胁压过来", ("死", "杀", "血", "伤", "痛", "追", "逃", "危险", "完了", "来不及")),
+    "揭示": ("亮出新信息或身份", ("原来", "竟然", "居然", "没想到", "竟是", "真正", "身份", "秘密")),
+    "反转": ("局面掉头", ("却", "可", "但", "然而", "忽然", "突然", "偏偏")),
+    "截断": ("话没说完／动作停住", ("…", "……", "——", "没说完", "戛然")),
+    "情绪": ("一句短促的心理或感叹", ("！", "!", "心里", "只觉得", "后悔", "害怕", "愤怒")),
+}
+
+
+def page_tail_hook(sentence: str) -> dict[str, Any]:
+    """判断一句收尾有没有钩子，以及属于哪一类。
+
+    只做「像不像留了钩子」的近似判断：句末是问句、危险信号、新信息、掉头词、截断，
+    或者带情绪标记的短句。判断不出就返回「平淡」。
+    注意：单句成段的短陈述句（「他转身走了。」）不算钩子 —— 那是节奏手法，读者不会因此翻页。
+    """
+    text = (sentence or "").strip()
+    if not text:
+        return {"kind": "平淡", "strong": False}
+    hits: list[str] = []
+    for kind, (_label, markers) in HOOK_KINDS.items():
+        if any(marker in text for marker in markers):
+            hits.append(kind)
+    if hits:
+        return {"kind": hits[0], "strong": True, "kinds": hits}
+    return {"kind": "平淡", "strong": False, "kinds": []}
+
+
+def long_description_paragraphs(text: str, *, limit: int = craft_rules.DESCRIPTION_LIMIT) -> list[str]:
+    """找出一整段都是描写（无动作、无对白）且超过官方口径长度的段落。
+
+    官方原话：「超过一百字的风景和情绪描写，都要好好琢磨一下，是不是水文了」。
+    """
+    found: list[str] = []
+    for paragraph in (text or "").split("\n"):
+        body = paragraph.strip()
+        if count_words(body) <= limit:
+            continue
+        if style_service.DIALOGUE_RE.search(body):
+            continue
+        if style_service._has_story_action(body):
+            continue
+        found.append(body)
+    return found
 
 
 def _platform_rule_mapping(report: dict[str, Any]) -> list[dict[str, Any]]:
@@ -356,13 +422,15 @@ def check_text(
 
     opening = opening_report(content)
     if opening.get("available"):
+        label = "第一页" if (chapter_number or 1) == 1 else "开篇"
         if opening["slow_start"]:
             result.checks.append(
                 _issue(
                     "OPENING_SLOW",
                     "warning",
                     opening["verdict"],
-                    "第一段就给动作、对白或麻烦；背景留到后面边写边给",
+                    "第一页就给动作、对白或麻烦；背景留到后面边写边给",
+                    rule="FIRST_PAGE",
                 )
             )
         if opening["info_dump"]:
@@ -374,14 +442,68 @@ def check_text(
                     "把设定拆成三五句，或者改成人物对话里带出来",
                     explaining_per_1k=opening["explaining_per_1k"],
                     abstract_per_1k=opening["abstract_per_1k"],
+                    rule="FIRST_PAGE",
                 )
             )
+        # 正文比一页还短时，「第一页」就是整章，页尾检查会与章末检查重复一遍
+        if not opening["tail_hook_strong"] and len(content) > craft_rules.FIRST_PAGE_CHARS:
+            result.checks.append(
+                _issue(
+                    "FIRST_PAGE_TAIL_FLAT",
+                    "warning",
+                    f"{label}最后一句没有留钩子（当前收尾：「{opening['last_sentence']}」）",
+                    "页尾放一个悬着的问题、一个反常的举动，或一句戛然而止的台词",
+                    excerpt=opening["last_sentence"],
+                    rule="PAGE_END_HOOK",
+                )
+            )
+
+    tail = page_tail_hook(_last_sentence_of(content))
+    if not tail["strong"]:
+        result.checks.append(
+            _issue(
+                "ENDING_NO_HOOK",
+                "warning",
+                f"章末缺少钩子（最后一句：「{_last_sentence_of(content)[:40]}」）",
+                "结尾留一个没答的问题、一次转折或一句截断的话——完读率主要靠这里",
+                excerpt=_last_sentence_of(content),
+                rule="CHAPTER_END_HOOK",
+            )
+        )
+    elif tail["kind"] == "情绪" and style_service.measure(content).hook_score < 0.4:
+        result.checks.append(
+            _issue(
+                "ENDING_HOOK_WEAK_KIND",
+                "info",
+                f"章末钩子类型偏软（{tail['kind']}）",
+                "换成悬念、危机、揭示或反转这类更强的收尾，钩子强度会更好",
+                rule="CHAPTER_END_HOOK",
+            )
+        )
+
+    long_paragraphs = long_description_paragraphs(content)
+    if long_paragraphs:
+        result.checks.append(
+            _issue(
+                "DESCRIPTION_OVER_LIMIT",
+                "warning",
+                f"有 {len(long_paragraphs)} 段纯描写超过 {craft_rules.DESCRIPTION_LIMIT} 字"
+                "（官方口径：超过一百字的风景和情绪描写要回头看看是不是水文）",
+                "拆开：留一两句最有画面的，其余换成人物动作或对白",
+                excerpt=long_paragraphs[0][:60],
+                rule="DESCRIPTION_OVER_100",
+            )
+        )
 
     style_report = style_service.review_text(
         content, profile=style_profile, voice_profile=voice_profile
     )
+    already = {item["code"] for item in result.checks}
     for issue in style_report.get("issues", []):
         if issue["code"] in ("TOO_SHORT", "BASELINE_STALE"):
+            continue
+        # 章末钩子这里已经按「最后一句的类型」判过了，不再重复报一遍文风层的同一条
+        if issue["code"] == "NO_HOOK" and "ENDING_NO_HOOK" in already:
             continue
         if issue["level"] == "warning":
             result.checks.append(
@@ -393,18 +515,6 @@ def check_text(
                     excerpt=issue.get("excerpt", ""),
                 )
             )
-
-    hook = style_report.get("metrics", {}).get("hook_score", 0.0)
-    if hook < 0.3:
-        result.checks.append(
-            _issue(
-                "ENDING_NO_HOOK",
-                "warning",
-                f"章末钩子偏弱（{hook}）",
-                "结尾留一个没答的问题、一次转折或一句截断的话——完读率主要靠这里",
-                value=hook,
-            )
-        )
 
     result.platform_rules = _platform_rule_mapping(style_report)
     return result
