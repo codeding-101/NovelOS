@@ -561,7 +561,8 @@ def check_text(
         )
 
     long_paragraphs = long_description_paragraphs(content)
-    if long_paragraphs:
+    # 一段是场景交代，连着好几段才是注水：官方口径针对的是「大段」描写堆在一起
+    if len(long_paragraphs) >= 2:
         result.checks.append(
             _issue(
                 "DESCRIPTION_OVER_LIMIT",

@@ -171,6 +171,8 @@ class StyleMetrics:
     verb_variety: float = 0.0
     novel_bigram_ratio: float = 0.0
     novel_char_ratio: float = 0.0
+    #: 段落平均字数（V0.9）：低于 30 字基本就是一句一段的碎片流
+    avg_paragraph_chars: float = 0.0
     summary_per_1k: float = 0.0
     elevation_per_1k: float = 0.0
     transition_per_1k: float = 0.0
@@ -204,6 +206,7 @@ METRIC_DIRECTIONS: dict[str, str] = {
     "hook_score": "higher_better",
     "punctuation_variety": "range",
     "short_paragraph_ratio": "range",
+    "avg_paragraph_chars": "range",
     # V0.5 推进与节奏
     "advancement_per_1k": "higher_better",
     "filler_paragraph_ratio": "lower_better",
@@ -244,6 +247,10 @@ DEFAULT_RANGES: dict[str, tuple[float, float]] = {
     "word_ttr": (0.80, 1.0),
     "word_concentration": (0.0, 0.22),
     "verb_variety": (0.26, 1.0),
+    # 段落粒度：单句成段是强调手法，一章用三五次就够。实测正常网文 3%~13%，
+    # 写成碎片流（意识流）会到 25% 以上。段落平均字数同理：低于 30 字基本就是一句一段。
+    "short_paragraph_ratio": (0.0, 0.18),
+    "avg_paragraph_chars": (30.0, 200.0),
     "summary_per_1k": (0.0, 2.5),
     "elevation_per_1k": (0.0, 3.0),
     "transition_per_1k": (0.0, 6.0),
@@ -862,6 +869,7 @@ def measure(text: str, *, known_texts: list[str] | None = None) -> StyleMetrics:
         verb_variety=verb_variety,
         novel_bigram_ratio=novel_bigram_ratio_value,
         novel_char_ratio=novel_char_ratio_value,
+        avg_paragraph_chars=round(chars / len(paragraphs), 1) if paragraphs else 0.0,
         summary_per_1k=_per_1k(summary_total, chars),
         elevation_per_1k=_per_1k(elevation_total, chars),
         transition_per_1k=_per_1k(transition_total, chars),
@@ -1383,6 +1391,34 @@ def _advancement_issues(
                 reference=reference,
                 excerpt="、".join(metrics.pattern_top[:3]),
                 suggestion="换掉开头与收尾：同一句式（开头三字 + 收尾标点）一章内别出现三次以上",
+            )
+        )
+
+    # 段落粒度：一句一段堆多了就是碎片流（读者会觉得「意识流」），
+    # 实测正常网文单句成段占 3%~13%，碎片流会到 25% 以上。
+    _low, high, reference = bounds("short_paragraph_ratio")
+    if metrics.short_paragraph_ratio > high:
+        short_paragraphs = [
+            p.strip() for p in text.split("\n") if p.strip() and count_words(p.strip()) <= 8
+        ]
+        issues.append(
+            StyleIssue(
+                code="FRAGMENTED_PARAGRAPHS",
+                level="warning",
+                metric="short_paragraph_ratio",
+                message=(
+                    f"段落太碎：单句成段的段落占 {round(metrics.short_paragraph_ratio * 100)}%"
+                    f"（{detail(reference)}，上限 {round(high * 100)}%），"
+                    f"全篇 {len([p for p in text.split(chr(10)) if p.strip()])} 段、"
+                    f"平均每段 {metrics.avg_paragraph_chars} 字"
+                ),
+                value=metrics.short_paragraph_ratio,
+                reference=reference,
+                excerpt="｜".join(short_paragraphs[:3])[:80],
+                suggestion=(
+                    "把同一个场景的句子并成一段（一段 2~5 句，约 60~150 字）；"
+                    "单句成段是强调手法，一章用三五次就够，不该占四分之一"
+                ),
             )
         )
     return issues

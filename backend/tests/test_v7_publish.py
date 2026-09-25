@@ -147,13 +147,13 @@ def test_long_description_over_official_limit_is_flagged():
         "拉出一道道细长的影子，风里带着湿润的气味，也带着松针的气味。"
     )
     assert len(long_scenery) > publish_service.craft_rules.DESCRIPTION_LIMIT
-    report = publish_service.check_text("第1章 山\n\n" + long_scenery + "\n")
+    # 一段是场景交代，连着两段以上才是注水（官方口径针对「大段」描写堆在一起）
+    report = publish_service.check_text("第1章 山\n\n" + long_scenery + "\n" + long_scenery + "\n")
     codes = {item["code"] for item in report.checks}
     assert "DESCRIPTION_OVER_LIMIT" in codes
 
-    short_scenery = "青云山很高，云在山腰一层一层堆着。"
-    ok = publish_service.check_text("第1章 山\n\n" + short_scenery + "\n")
-    assert "DESCRIPTION_OVER_LIMIT" not in {item["code"] for item in ok.checks}
+    single = publish_service.check_text("第1章 山\n\n" + long_scenery + "\n")
+    assert "DESCRIPTION_OVER_LIMIT" not in {item["code"] for item in single.checks}
 
 
 def test_checks_point_at_the_craft_rule_they_come_from():

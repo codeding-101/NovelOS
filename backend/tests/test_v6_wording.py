@@ -256,6 +256,64 @@ def test_style_lock_directive_states_v6_constraints(session, novel):
     assert "桥段" in directive
 
 
+#: 一句一段堆成的碎片流（读者会觉得「意识流」）。规则有「正文 ≥200 字才判」的门槛，
+#: 所以这个样本必须够长。
+FRAGMENTED_TEXT = (
+    "他推开门走进院子。\n\n"
+    "外面正在下雪。\n\n"
+    "风从北边刮过来。\n\n"
+    "院子里没有人。\n\n"
+    "他缩了缩脖子。\n\n"
+    "把手拢进袖子里。\n\n"
+    "远处有一点灯光。\n\n"
+    "他朝那边走过去。\n\n"
+    "雪在脚底下响。\n\n"
+    "灯下站着一个人。\n\n"
+    "是个老头。\n\n"
+    "老头正在讲故事。\n\n"
+    "一群孩子围着听。\n\n"
+    "他也蹲下来听。\n\n"
+    "雪落在他的肩上。\n\n"
+    "他没有拍掉雪。\n\n"
+    "老头说了一个名字。\n\n"
+    "他没有听清楚。\n\n"
+    "于是又问了一遍。\n\n"
+    "老头笑了。\n\n"
+    "笑得很轻。\n\n"
+    "没有人再问什么。\n\n"
+    "他把那个名字记住。\n\n"
+    "回去的路上。\n\n"
+    "他一直在想。\n\n"
+    "想那个人去了哪里。\n\n"
+    "想自己能不能去。\n\n"
+    "想了一整个晚上。\n\n"
+    "第二天雪停了。\n\n"
+    "他还是没想明白。\n"
+)
+
+
+def test_fragmented_paragraphs_are_flagged():
+    """一句一段堆成碎片流（读者会觉得「意识流」）要被点名。"""
+    metrics = style_service.measure(FRAGMENTED_TEXT)
+    assert metrics.total_chars >= 200, "样本要够长，规则才判定"
+    report = style_service.review_text(FRAGMENTED_TEXT, min_chars=100)
+    issue = next(i for i in report["issues"] if i["code"] == "FRAGMENTED_PARAGRAPHS")
+    assert issue["level"] == "warning"
+    assert "单句成段" in issue["message"]
+    assert issue["suggestion"], "要给出怎么改（并成一段）"
+    assert metrics.short_paragraph_ratio > 0.18
+    assert metrics.avg_paragraph_chars < 30
+
+
+def test_normal_paragraphing_is_not_flagged(session, novel, chapters):
+    """正常网文的段落粒度不该被误报（实测单句成段占 3%~13%）。"""
+    for chapter in list(chapters.values())[:5]:
+        report = style_service.review_text(chapter.content or "", min_chars=300)
+        codes = {issue["code"] for issue in report["issues"]}
+        assert "FRAGMENTED_PARAGRAPHS" not in codes, f"第{chapter.chapter_number}章被误报"
+        assert style_service.measure(chapter.content or "").short_paragraph_ratio <= 0.18
+
+
 def test_drift_report_tracks_v6_metrics(session, novel, chapters):
     profile = style_service.save_profile(
         session, novel, [_seed_texts(chapters)[0]], name="漂移 V0.6", make_default=True
