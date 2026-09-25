@@ -421,6 +421,8 @@ export default function Page() {
             nextChapterNumber={nextChapterNumber}
             provider={provider}
             bible={bible}
+            chapterWordsMin={novel.chapter_words_min}
+            chapterWordsMax={novel.chapter_words_max}
             storedReport={storedReport}
             fragmentsVersion={fragmentsVersion}
             onFragmentsChanged={noteFragmentsChanged}

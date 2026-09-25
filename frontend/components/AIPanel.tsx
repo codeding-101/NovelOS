@@ -43,6 +43,9 @@ interface Props {
   nextChapterNumber: number;
   provider: string;
   bible: Bible | null;
+  /** 本书设定的按章长度区间：写作表单的目标字数默认取它。 */
+  chapterWordsMin: number;
+  chapterWordsMax: number;
   storedReport: ContinuityReport | null;
   /** 碎片被改动过的次数，变化时重新读取与本章相关的碎片。 */
   fragmentsVersion: number;
@@ -60,6 +63,8 @@ export function AIPanel({
   nextChapterNumber,
   provider,
   bible,
+  chapterWordsMin,
+  chapterWordsMax,
   storedReport,
   fragmentsVersion,
   onFragmentsChanged,
@@ -84,8 +89,7 @@ export function AIPanel({
   const [goals, setGoals] = useState("");
   const [mustInclude, setMustInclude] = useState("");
   const [forbidden, setForbidden] = useState("");
-  const [targetWords, setTargetWords] = useState(1200);
-  const [writeCharacters, setWriteCharacters] = useState<string[]>([]);
+  const [targetWords, setTargetWords] = useState(1200);  const [writeCharacters, setWriteCharacters] = useState<string[]>([]);
   // 修订闭环：勾选后「生成草稿」改走 revise-chapter
   const [autoRevise, setAutoRevise] = useState(false);
   const [revision, setRevision] = useState<RevisionResponse | null>(null);
@@ -121,6 +125,13 @@ export function AIPanel({
   useEffect(() => {
     void loadFragments();
   }, [loadFragments, fragmentsVersion]);
+
+  // 目标字数默认跟着本书的按章长度区间走（作者在设置里改区间，这里自动跟着变）
+  useEffect(() => {
+    if (chapterWordsMin > 0 && chapterWordsMax >= chapterWordsMin) {
+      setTargetWords(Math.round((chapterWordsMin + chapterWordsMax) / 2));
+    }
+  }, [chapterWordsMin, chapterWordsMax]);
 
   async function placeToThisChapter(fragment: Fragment) {
     if (!chapterNumber) {
@@ -579,11 +590,15 @@ export function AIPanel({
             </div>
             <div className="field-row" style={{ marginTop: 6 }}>
               <label>
-                目标字数
+                目标字数（本书 {chapterWordsMin}~{chapterWordsMax}）
                 <input
                   type="number"
                   value={targetWords}
-                  onChange={(event) => setTargetWords(Number(event.target.value) || 1200)}
+                  onChange={(event) =>
+                    setTargetWords(
+                      Number(event.target.value) || Math.round((chapterWordsMin + chapterWordsMax) / 2),
+                    )
+                  }
                 />
               </label>
               <label>
