@@ -41,16 +41,23 @@ npm run dev          # http://127.0.0.1:3000
 
 ### 部署到服务器
 
-有 Docker 的话最省事（前端、后端、数据卷都配好了）：
+先装 Docker（Windows 装 Docker Desktop 并启用 WSL2；Linux 装 docker engine + compose 插件），
+然后在仓库根目录：
 
 ```bash
-cp backend/.env.example .env      # 填 DEEPSEEK_API_KEY；不填就走离线提供者
+cp .env.example .env              # 填 DEEPSEEK_API_KEY；不填就走离线提供者
 docker compose up -d --build
 # 前端 http://<服务器IP>:3000 ，接口文档 http://<服务器IP>:8000/docs
+docker compose logs -f backend     # 看日志；docker compose down 停掉（数据不受影响）
 ```
 
 数据落在宿主机的 `./data`（SQLite 库 + `data/novels/<书名>/chNNN.md`），重建容器不丢。
-只想先在本机看效果，什么都不用装：`docker compose up` 就够了。
+只想先在本机看效果，同样一条命令。
+
+镜像里两个容易踩的点已经处理好：后端第一次启动会自己在空卷里建库并跑迁移；
+前端用 Next 的 standalone 产物，`/api` 转发指向容器内的后端服务名（构建时就写进产物里）。
+要挂自己的 OpenAI 兼容端点（本地 Ollama、公司网关等）看根目录 `.env.example` 里的
+`NOVELOS_PROVIDERS`，容器里访问宿主机要用 `host.docker.internal`。
 
 不想用 Docker 就分别起：后端 `uvicorn app.main:app --host 0.0.0.0 --port 8000`，
 前端 `npm run build && npm run start`，用 `NOVELOS_BACKEND_URL` 指到后端地址。
