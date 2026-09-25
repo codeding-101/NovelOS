@@ -18,6 +18,8 @@ import type {
   CommitmentStatus,
   InvariantIssue,
   InvariantReport,
+  PublishCheck,
+  PublishCheckItem,
   StyleDriftReport,
   StyleProfile,
   StyleReview,
@@ -192,6 +194,51 @@ function ClaimVerdictGroups({ report }: { report: ClaimReport }) {
   );
 }
 
+// --------------------------------------------------------------------------- V0.7 发布前检查
+const PUBLISH_LEVEL_CLASS: Record<string, string> = {
+  error: "error",
+  warning: "warning",
+  info: "info",
+  ok: "ok",
+};
+
+const PUBLISH_LEVEL_LABELS: Record<string, string> = {
+  error: "阻断",
+  warning: "警告",
+  info: "提示",
+  ok: "正常",
+};
+
+const PUBLISH_LEVEL_ORDER = ["error", "warning", "info"];
+
+/** 开篇与章末直接关系到完读率，从清单里挑出来单独排一份。 */
+const OPENING_HOOK_CODES = ["OPENING_SLOW", "OPENING_INFO_DUMP", "ENDING_NO_HOOK"];
+
+/** 一条发布前检查项：结论 + 原文片段 + 修法。 */
+function PublishCheckRow({ item }: { item: PublishCheckItem }) {
+  const level = item.level || "info";
+  return (
+    <div className="item-row">
+      <div className="row-head">
+        <span className={`badge ${PUBLISH_LEVEL_CLASS[level] ?? "info"}`}>
+          {PUBLISH_LEVEL_LABELS[level] ?? level}
+        </span>
+        <span className="hint">{item.code}</span>
+        <b>{item.message}</b>
+      </div>
+      {item.excerpt ? <div className="payload">原文：{item.excerpt}</div> : null}
+      {item.category ? (
+        <div className="payload">
+          分类：{item.category}
+          {item.word ? `｜词：${item.word}` : ""}
+        </div>
+      ) : null}
+      {item.value !== undefined ? <div className="payload">测量值：{item.value}</div> : null}
+      {item.fix ? <div className="fix">修法：{item.fix}</div> : null}
+    </div>
+  );
+}
+
 export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props) {
   const [baseline, setBaseline] = useState<StyleProfile | null>(null);
   const [baselineLoading, setBaselineLoading] = useState(false);
@@ -237,6 +284,12 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
   const [drift, setDrift] = useState<StyleDriftReport | null>(null);
   const [driftLoading, setDriftLoading] = useState(false);
   const [locking, setLocking] = useState(false);
+
+  // V0.7：发布前检查（番茄免费小说）
+  const [publishText, setPublishText] = useState("");
+  const [publishChapter, setPublishChapter] = useState("");
+  const [publishChecking, setPublishChecking] = useState(false);
+  const [publishReport, setPublishReport] = useState<PublishCheck | null>(null);
 
   const loadBaseline = useCallback(async () => {
     setBaselineLoading(true);
@@ -455,6 +508,33 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
     }
   }
 
+  /** 发布前检查：贴一段草稿，或只填章节号让后端查已入库的那一章；只出清单，不改正文、不落库。 */
+  async function runPublishCheck() {
+    const chapter = Number(publishChapter);
+    const byChapter = Number.isFinite(chapter) && chapter >= 1;
+    if (!byChapter && !publishText.trim()) {
+      setError("请先粘贴一段草稿，或填写要检查的章节号");
+      return;
+    }
+    setPublishChecking(true);
+    setError("");
+    setStatus("正在按番茄的发布口径检查（字数、风险词、格式、开篇与章末）…");
+    try {
+      const report = await api.publishCheckText(novelId, {
+        ...(byChapter ? { chapter_number: Math.floor(chapter) } : { text: publishText }),
+      });
+      setPublishReport(report);
+      setStatus(
+        `发布前检查完成：${report.word_count} 字，阻断 ${report.blocking} 项、警告 ${report.warnings} 项`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(byChapter ? `第${Math.floor(chapter)}章：${message}` : message);
+    } finally {
+      setPublishChecking(false);
+    }
+  }
+
   async function decideCommitment(commitment: Commitment, action: "fulfill" | "abandon") {
     setActingOn(commitment.id);
     setError("");
@@ -521,6 +601,19 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
   const overdueCount = commitments.filter((item) => item.status === "OVERDUE").length;
   const issueCodes = Object.entries(invariants?.codes ?? {}).sort((a, b) => b[1] - a[1]);
   const checked = invariants?.checked ?? {};
+
+  const publishChecks = publishReport?.checks || [];
+  const publishRisks = publishReport?.risks || [];
+  const publishRules = publishReport?.platform_rules || [];
+  const publishOpening = publishChecks.filter((item) => OPENING_HOOK_CODES.includes(item.code));
+  const publishRest = publishChecks.filter((item) => !OPENING_HOOK_CODES.includes(item.code));
+  const publishOk = publishRest.filter((item) => (item.level || "info") === "ok");
+  const publishGroups = PUBLISH_LEVEL_ORDER.map((level) => ({
+    level,
+    items: publishRest.filter((item) => (item.level || "info") === level),
+  })).filter((group) => group.items.length > 0);
+  const publishWords = publishReport?.words_per_chapter || [];
+  const publishDaily = publishReport?.daily_words_targets || [];
 
   return (
     <div>
@@ -1154,6 +1247,166 @@ export function QualityPanel({ novelId, onRefresh, setStatus, setError }: Props)
             </div>
           );
         })}
+      </div>
+
+      <div className="issue" style={{ marginTop: 10 }}>
+        <div className="issue-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          发布前检查（番茄免费小说）
+          <span className="spacer" />
+          {publishReport &&
+            (publishReport.ready ? (
+              <span className="badge ok">可以发</span>
+            ) : (
+              <span className="badge error">先处理阻断项</span>
+            ))}
+        </div>
+        <textarea
+          placeholder="粘贴待发布的这一章（首行写成「第N章 标题」；只做检查，不落库）"
+          value={publishText}
+          onChange={(event) => setPublishText(event.target.value)}
+          rows={4}
+          style={{ width: "100%", marginTop: 4 }}
+        />
+        <div className="field-row" style={{ marginTop: 6 }}>
+          <label style={{ flex: "0 0 auto" }}>
+            按章节号核对已入库的正文（填了就按那一章查，忽略上面的草稿）
+            <input
+              type="number"
+              min={1}
+              style={{ width: 100 }}
+              value={publishChapter}
+              placeholder="可留空"
+              onChange={(event) => setPublishChapter(event.target.value)}
+            />
+          </label>
+          <button
+            className="primary"
+            onClick={() => void runPublishCheck()}
+            disabled={publishChecking || (!publishText.trim() && !publishChapter.trim())}
+          >
+            {publishChecking ? "检查中…" : "检查"}
+          </button>
+          {publishReport && <button onClick={() => setPublishReport(null)}>清空结果</button>}
+          <span className="hint">{publishText.length} 字</span>
+        </div>
+        <div className="hint" style={{ marginTop: 4 }}>
+          口径来自番茄的签约标准与低质治理公告：不接受「AI 粗制滥造、格式混乱、结构失常、空洞水文」，
+          优质内容看重「开篇快速进入主线」，福利按每日 4000 或 6000 字与完读率算。
+          阻断项（level=error，目前只有审核风险词）不处理完不该发。
+        </div>
+        {publishReport && (
+          <>
+            <div className={publishReport.ready ? "" : "error-text"} style={{ marginTop: 6 }}>
+              <b>{publishReport.word_count} 字</b>｜阻断 <b>{publishReport.blocking}</b>｜警告{" "}
+              <b>{publishReport.warnings}</b>｜
+              {publishReport.ready ? "可以发" : "先处理阻断项"}
+            </div>
+            <div className="hint">
+              {publishReport.title
+                ? publishReport.title
+                : (publishReport.format_issues || []).some(
+                      (item) => item.code === "FORMAT_TITLE_MISSING",
+                    )
+                  ? "（首行未识别到章节标题）"
+                  : "（贴草稿时未带标题；首行格式已在检查项里核对）"}
+              {publishReport.chapter_number ? `｜第${publishReport.chapter_number}章` : ""}
+              ｜平台：{publishReport.platform || "—"}
+              {publishWords.length === 2 ? `｜按章长度 ${publishWords[0]}–${publishWords[1]} 字` : ""}
+              {publishDaily.length > 0 ? `｜每日更新目标 ${publishDaily.join(" / ")} 字` : ""}
+              ｜格式问题 {(publishReport.format_issues || []).length} 项（已并入下面的清单）
+            </div>
+
+            {publishOpening.length > 0 && (
+              <div className="issue warning" style={{ marginTop: 6 }}>
+                <div className="issue-title">
+                  开篇与章末（{publishOpening.length} 项，直接影响完读率）
+                </div>
+                {publishOpening.map((item, index) => (
+                  <PublishCheckRow key={`opening-${item.code}-${index}`} item={item} />
+                ))}
+              </div>
+            )}
+
+            <div className="issue" style={{ marginTop: 6 }}>
+              <div className="issue-title">平台四条低质规则</div>
+              {publishRules.length === 0 && (
+                <div className="hint">这次响应里没有规则映射（后端可能没算文风指标）。</div>
+              )}
+              {publishRules.map((rule) => (
+                <div key={rule.rule} className="item-row">
+                  <div className="row-head">
+                    <span className={`badge ${rule.hit ? "error" : "ok"}`}>
+                      {rule.hit ? "命中" : "未命中"}
+                    </span>
+                    <b>{rule.rule}</b>
+                  </div>
+                  <div className="payload">
+                    {rule.evidence ? `命中指标：${rule.evidence}` : "没有命中这一类的指标"}
+                  </div>
+                  {rule.advice ? <div className="payload">建议：{rule.advice}</div> : null}
+                </div>
+              ))}
+            </div>
+
+            <div className="issue" style={{ marginTop: 6 }}>
+              <div className="issue-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                检查项清单
+                <span className="spacer" />
+                <span className="hint" style={{ color: "inherit" }}>
+                  共 {publishRest.length} 项{publishOpening.length > 0 ? "（开篇与章末另列）" : ""}
+                </span>
+              </div>
+              {publishGroups.length === 0 && publishOk.length === 0 && (
+                <div className="hint">这次没有任何检查项。</div>
+              )}
+              {publishGroups.map((group) => (
+                <div
+                  key={group.level}
+                  className={`issue ${PUBLISH_LEVEL_CLASS[group.level] ?? "info"}`}
+                  style={{ marginTop: 6 }}
+                >
+                  <div className="issue-title">
+                    {PUBLISH_LEVEL_LABELS[group.level] ?? group.level}（{group.items.length}）
+                  </div>
+                  {group.items.map((item, index) => (
+                    <PublishCheckRow key={`${group.level}-${item.code}-${index}`} item={item} />
+                  ))}
+                </div>
+              ))}
+              {publishOk.length > 0 && (
+                <details style={{ marginTop: 6 }}>
+                  <summary>已通过的检查（{publishOk.length}）</summary>
+                  {publishOk.map((item, index) => (
+                    <PublishCheckRow key={`ok-${item.code}-${index}`} item={item} />
+                  ))}
+                </details>
+              )}
+            </div>
+
+            <div className="issue" style={{ marginTop: 6 }}>
+              <div className="issue-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                审核风险词
+                <span className="spacer" />
+                {publishRisks.length > 0 ? (
+                  <span className="badge error">{publishRisks.length} 处</span>
+                ) : (
+                  <span className="badge ok">没扫到风险词</span>
+                )}
+              </div>
+              {publishRisks.length === 0 && <div className="hint">没扫到风险词。</div>}
+              {publishRisks.map((risk, index) => (
+                <div key={`${risk.category}-${risk.word}-${index}`} className="item-row">
+                  <div className="row-head">
+                    <span className="badge error">{risk.category || "未分类"}</span>
+                    <b>{risk.word}</b>
+                  </div>
+                  {risk.quote ? <div className="payload">上下文：{risk.quote}</div> : null}
+                  {risk.advice ? <div className="payload">建议：{risk.advice}</div> : null}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

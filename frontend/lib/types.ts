@@ -1060,3 +1060,58 @@ export interface ClaimReport {
   summary: string;
   created_at?: string | null;
 }
+
+// --------------------------------------------------------------------------- V0.7 发布前准备
+/** 一条发布前检查项；level=error 的是阻断项，归零才算可以发。 */
+export interface PublishCheckItem {
+  code: string;
+  level: "error" | "warning" | "info" | "ok";
+  message: string;
+  fix: string;
+  /** 命中的原文片段（风险词与格式问题会带）。 */
+  excerpt?: string;
+  /** 度量值（字数、钩子分等）。 */
+  value?: number;
+  /** 风险词所属分类（只有 RISK_WORD 带）。 */
+  category?: string;
+  /** 命中的风险词（只有 RISK_WORD 带）。 */
+  word?: string;
+}
+
+/** 命中的审核风险词：分类 + 词 + 上下文 + 处置建议。 */
+export interface PublishRisk {
+  category: string;
+  word: string;
+  quote: string;
+  advice: string;
+}
+
+/** 平台点名的四条低质规则的命中情况。 */
+export interface PublishRule {
+  rule: string;
+  hit: boolean;
+  /** 命中的文风指标 code（多个用「、」连接）；未命中为空串。 */
+  evidence: string;
+  advice: string;
+}
+
+/** 一次发布前检查的清单：贴的草稿或某一章正文。 */
+export interface PublishCheck {
+  novel_id: string;
+  novel_title: string;
+  chapter_id?: string | null;
+  chapter_number?: number | null;
+  title: string;
+  word_count: number;
+  platform: string;
+  words_per_chapter: number[];
+  daily_words_targets: number[];
+  checks: PublishCheckItem[];
+  risks: PublishRisk[];
+  format_issues: PublishCheckItem[];
+  platform_rules: PublishRule[];
+  /** level=error 的条数。 */
+  blocking: number;
+  warnings: number;
+  ready: boolean;
+}

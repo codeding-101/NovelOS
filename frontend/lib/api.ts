@@ -34,6 +34,7 @@ import type {
   NovelStats,
   PlanGenerateResponse,
   ProviderInfo,
+  PublishCheck,
   ReindexResult,
   RetrievalHit,
   RetrievalResult,
@@ -87,6 +88,21 @@ function query(params: Record<string, string | number | boolean | undefined | nu
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
     .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
     .join("&");
+}
+
+/** 从 Content-Disposition（可能带 RFC 5987 的 filename*）里取附件名；取不到返回 null。 */
+function attachmentFilename(header: string | null): string | null {
+  if (!header) return null;
+  const extended = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1].trim());
+    } catch {
+      return extended[1].trim();
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain ? plain[1].trim() : null;
 }
 
 export const api = {
@@ -410,4 +426,44 @@ export const api = {
       ...json({ locked }),
     }),
   styleDrift: (novelId: string) => request<StyleDriftReport>(`/novels/${novelId}/style/drift`),
+
+  // ------------------------------------------------------------------ V0.7 发布前检查与导出
+  /** 检查已入库的某一章（用章节 id）。 */
+  publishCheckChapter: (chapterId: string) =>
+    request<PublishCheck>(`/chapters/${chapterId}/publish-check`, { method: "POST" }),
+  /** 检查一段草稿，或只给 chapter_number 让后端去查那一章；text 与 chapter_number 至少给一个。 */
+  publishCheckText: (
+    novelId: string,
+    body: {
+      text?: string;
+      chapter_number?: number;
+      title?: string;
+      target_words_min?: number;
+      target_words_max?: number;
+    },
+  ) =>
+    request<PublishCheck>(`/novels/${novelId}/publish-check`, {
+      method: "POST",
+      ...json(body),
+    }),
+  /**
+   * 导出正文：响应体是纯文本（不是 JSON），所以只借用 requestRaw 拿响应本身，
+   * 再按 Content-Disposition 解析附件名，解析不到就自己拼一个。
+   */
+  exportNovelText: async (
+    novelId: string,
+    params: { fmt?: "txt" | "md"; fromChapter?: number; toChapter?: number } = {},
+  ): Promise<{ text: string; filename: string }> => {
+    const fmt = params.fmt ?? "txt";
+    const search = query({
+      fmt,
+      from_chapter: params.fromChapter,
+      to_chapter: params.toChapter,
+    });
+    const response = await requestRaw(`/novels/${novelId}/export?${search}`);
+    const text = await response.text();
+    const filename =
+      attachmentFilename(response.headers.get("Content-Disposition")) || `${novelId}.${fmt}`;
+    return { text, filename };
+  },
 };

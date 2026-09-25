@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.config import settings
 from app.database import init_db
-from app.routers import ai, chapters, entities, fragments, insight, novels, plans, quality
+from app.routers import ai, chapters, entities, fragments, insight, novels, plans, publish, quality
 
 
 @asynccontextmanager
@@ -62,6 +62,8 @@ app.include_router(quality.chapter_router)
 app.include_router(quality.item_router)
 app.include_router(fragments.novel_router)
 app.include_router(fragments.item_router)
+app.include_router(publish.novel_router)
+app.include_router(publish.chapter_router)
 app.include_router(ai.router)
 
 

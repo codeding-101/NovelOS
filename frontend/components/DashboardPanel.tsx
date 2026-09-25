@@ -58,6 +58,9 @@ export function DashboardPanel({
   const [retrieval, setRetrieval] = useState<RetrievalResult | null>(null);
   const [setting, setSetting] = useState<{ genre: string; synopsis: string; worldview: string; outline: string } | null>(null);
   const [savingSetting, setSavingSetting] = useState(false);
+  const [exportFrom, setExportFrom] = useState("");
+  const [exportTo, setExportTo] = useState("");
+  const [exporting, setExporting] = useState<"txt" | "md" | null>(null);
 
   const currentSetting = {
     genre: novel?.genre ?? "",
@@ -92,6 +95,33 @@ export function DashboardPanel({
       setError(error instanceof Error ? error.message : String(error));
     } finally {
       setSavingSetting(false);
+    }
+  }
+
+  /** 导出整本或一段；txt 由后端去掉 Markdown 标记，用于粘贴/上传到平台后台。 */
+  async function exportText(fmt: "txt" | "md") {
+    setExporting(fmt);
+    setError("");
+    setStatus(`正在导出 ${fmt}…`);
+    try {
+      const from = Number(exportFrom);
+      const to = Number(exportTo);
+      const { text, filename } = await api.exportNovelText(novelId, {
+        fmt,
+        fromChapter: Number.isFinite(from) && from >= 1 ? Math.floor(from) : undefined,
+        toChapter: Number.isFinite(to) && to >= 1 ? Math.floor(to) : undefined,
+      });
+      downloadText(filename, text);
+      setStatus(
+        `已导出 ${filename}（${text.length} 字符）` +
+          (fmt === "txt"
+            ? "：txt 已去掉 Markdown 标记、章节之间留了空行，可以直接粘贴或上传到番茄后台"
+            : "：md 保留原始 Markdown 标记"),
+      );
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -222,6 +252,46 @@ export function DashboardPanel({
             撤销改动
           </button>
           {settingDirty && <span className="hint">有未保存的改动</span>}
+        </div>
+      </div>
+
+      <div className="issue" style={{ marginBottom: 10 }}>
+        <div className="issue-title">导出为发布稿</div>
+        <div className="field-row" style={{ marginBottom: 6 }}>
+          <label style={{ flex: "0 0 auto" }}>
+            起始章号（留空 = 从第 1 章）
+            <input
+              type="number"
+              min={1}
+              style={{ width: 110 }}
+              value={exportFrom}
+              placeholder="可留空"
+              onChange={(event) => setExportFrom(event.target.value)}
+            />
+          </label>
+          <label style={{ flex: "0 0 auto" }}>
+            结束章号（留空 = 到最后一章）
+            <input
+              type="number"
+              min={1}
+              style={{ width: 110 }}
+              value={exportTo}
+              placeholder="可留空"
+              onChange={(event) => setExportTo(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="field-row">
+          <button className="primary" onClick={() => void exportText("txt")} disabled={exporting !== null}>
+            {exporting === "txt" ? "导出中…" : "导出为 txt（可粘贴/上传到番茄后台）"}
+          </button>
+          <button onClick={() => void exportText("md")} disabled={exporting !== null}>
+            {exporting === "md" ? "导出中…" : "导出 md"}
+          </button>
+        </div>
+        <div className="hint" style={{ marginTop: 4 }}>
+          txt 是去掉 Markdown 标记的纯文本（#/**/列表符号都清掉），章节之间留了空行，按「第N章 标题」
+          单独成行，可以直接粘到平台后台或整本上传；md 保留原始标记，用于自己留档或另投。
         </div>
       </div>
 
@@ -646,4 +716,17 @@ function formatDuration(startedAt: string, finishedAt: string | null): string {
   const finished = new Date(finishedAt).getTime();
   if (!Number.isFinite(started) || !Number.isFinite(finished)) return "—";
   return `${((finished - started) / 1000).toFixed(1)} 秒`;
+}
+
+/** 用 Blob + a[download] 触发下载：导出接口回的是纯文本，不能用 JSON 封装。 */
+function downloadText(filename: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // 立刻撤销会让部分浏览器丢掉还在读取的 Blob，等一拍再释放
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }

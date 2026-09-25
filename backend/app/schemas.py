@@ -1553,3 +1553,33 @@ class StyleDriftReport(BaseModel):
 
 # ClaimReportOut 定义在本文件末尾，这里显式解析前面的前向引用
 ChapterCompletionReport.model_rebuild()
+
+
+# --------------------------------------------------------------------------- 发布前检查（V0.7）
+class PublishCheckRequest(BaseModel):
+    """发布前检查：给 text，或给 chapter_number 直接查那一章。"""
+
+    text: str = ""
+    chapter_number: int | None = Field(default=None, ge=1, le=9999)
+    title: str = ""
+    target_words_min: int | None = Field(default=None, ge=200, le=20000)
+    target_words_max: int | None = Field(default=None, ge=200, le=20000)
+
+
+class PublishCheckOut(BaseModel):
+    novel_id: str = ""
+    novel_title: str = ""
+    chapter_id: str | None = None
+    chapter_number: int | None = None
+    title: str = ""
+    word_count: int = 0
+    platform: str = ""
+    words_per_chapter: list[int] = Field(default_factory=list)
+    daily_words_targets: list[int] = Field(default_factory=list)
+    checks: list[dict[str, Any]] = Field(default_factory=list)
+    risks: list[dict[str, Any]] = Field(default_factory=list)
+    format_issues: list[dict[str, Any]] = Field(default_factory=list)
+    platform_rules: list[dict[str, Any]] = Field(default_factory=list)
+    blocking: int = 0
+    warnings: int = 0
+    ready: bool = True
