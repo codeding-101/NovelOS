@@ -623,7 +623,7 @@ def test_live_critic_flags_summary_and_safe_wording(session, novel, chapters):
         context={"novel_id": novel.id, "content": SUMMARY_HEAVY_TEXT},
         json_schema=StyleModelResult.model_json_schema(),
         temperature=0.2,
-        max_tokens=4096,
+        max_tokens=6144,
     )
     try:
         response = provider.generate(request)
