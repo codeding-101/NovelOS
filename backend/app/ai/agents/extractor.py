@@ -97,7 +97,7 @@ class ExtractorAgent:
             context=context,
             json_schema=schema,
             temperature=0.1,
-            max_tokens=8192,
+            max_tokens=16384,
         )
         response = self.provider.generate(request)
         warnings = list(response.warnings)
@@ -126,7 +126,7 @@ class ExtractorAgent:
                 context=context,
                 json_schema=schema,
                 temperature=0.0,
-                max_tokens=8192,
+                max_tokens=16384,
             )
             response = self.provider.generate(repair)
             warnings.extend(response.warnings)

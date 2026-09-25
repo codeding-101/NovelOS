@@ -153,7 +153,7 @@ class FragmentRealizer:
             },
             json_schema=RealizerOutput.model_json_schema(),
             temperature=0.7,
-            max_tokens=8192,
+            max_tokens=16384,
         )
         response = self.provider.generate(ai_request)
         warnings = list(response.warnings)
@@ -172,7 +172,7 @@ class FragmentRealizer:
                 context=ai_request.context,
                 json_schema=RealizerOutput.model_json_schema(),
                 temperature=0.2,
-                max_tokens=8192,
+                max_tokens=16384,
             )
             response = self.provider.generate(repair)
             warnings.extend(response.warnings)

@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import prompts
-from app.ai.base import AIProvider, AIRequest
+from app.ai.base import AIError, AIProvider, AIRequest
 from app.models import (
     CanonFact,
     CanonStatus,
@@ -277,7 +277,7 @@ class ChapterWriter:
                 "novel_context": novel_context,
             },
             temperature=0.8,
-            max_tokens=8192,
+            max_tokens=32768,
         )
         response = self.provider.generate(request_obj)
         warnings.extend(response.warnings)
@@ -288,6 +288,14 @@ class ChapterWriter:
             warnings.extend(item for item in (response.parsed.get("warnings") or []) if item)
         title, body = self._split_title(raw_content, request.title, target_number)
         word_count = count_words(body)
+
+        # 空稿不能落库：以前模型偶发返回空内容时，会静默存出一个 0 字的章节，
+        # 之后「发布前检查」又拿它去检查、报一个看不出原因的 400。
+        if not body.strip():
+            raise AIError(
+                "模型这一轮没有返回正文（可能被限流或提示过长），请重试一次；"
+                "草稿没有落库，章节列表不受影响"
+            )
 
         for item in request.forbidden:
             if item and item in body:

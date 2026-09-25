@@ -186,7 +186,7 @@ class PlannerAgent:
             context=context,
             json_schema=PLAN_SCHEMA,
             temperature=0.6,
-            max_tokens=8192,
+            max_tokens=16384,
         )
         response = self.provider.generate(request)
         warnings = list(response.warnings)
@@ -212,7 +212,7 @@ class PlannerAgent:
                 context=context,
                 json_schema=PLAN_SCHEMA,
                 temperature=0.0,
-                max_tokens=8192,
+                max_tokens=16384,
             )
             response = self.provider.generate(repair)
             warnings.extend(response.warnings)

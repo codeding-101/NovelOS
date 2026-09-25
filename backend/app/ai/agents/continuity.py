@@ -722,7 +722,7 @@ class ContinuityChecker:
             context=context,
             json_schema={"type": "object"},
             temperature=0.2,
-            max_tokens=2048,
+            max_tokens=8192,
         )
         response = self.provider.generate(request)
         raw_issues = parse_issues_payload(response.text or "")

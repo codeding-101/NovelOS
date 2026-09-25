@@ -149,6 +149,13 @@ class ChatCompletionsProvider(AIProvider):
             warnings.append(
                 "模型输出达到 max_tokens 被截断，这一轮结果可能不完整；可缩小范围或提高上限后重试"
             )
+        if not text.strip() and not message.get("tool_calls"):
+            # 空回复必须有交代：否则上层会把空内容当成「写完了」，落成一个 0 字的章节
+            warnings.append(
+                f"模型这一轮没有返回任何内容（choices={len(choices)}"
+                + (f"，finish_reason={finish_reason}" if finish_reason else "")
+                + "）：可以先重试一次；连续出现就该检查模型服务或提示词长度"
+            )
         parsed = None
         if request.json_schema is not None and not message.get("tool_calls"):
             parsed = extract_json(text)

@@ -137,6 +137,36 @@ def _last_sentence_of(text: str) -> str:
     return sentences[-1].strip("“”\"' \n") if sentences else ""
 
 
+def _ending_beat(text: str, *, window: int = 200) -> str:
+    """章末「这一拍」：最后约 200 字。
+
+    只看最后一句太窄了：像「……『没回来。』他把册子一夹……他跟上去了。」这种收尾，
+    钩子在中段，末句是动作收束 —— 读者感受到的是整个结尾的落点，不是一个句子。
+    """
+    body = (text or "").strip()
+    return body[-window:]
+
+
+def _last_complete_sentence(text: str) -> str:
+    """窗口内最后一句**完整**的话。
+
+    「第一页」是按字数切出来的，切点很可能落在一句话中间（「讲那人留下过东西—」）。
+    拿半句去判「页尾有没有钩子」是误报，所以这里往前退到最近一句以句末标点收尾的。
+    """
+    sentences = [
+        item.strip().lstrip("“”「」\"' \n").strip()
+        for item in split_sentences(text or "")
+        if item.strip()
+    ]
+    sentences = [item for item in sentences if re.search(r"[\u4e00-\u9fa5]", item)]
+    for sentence in reversed(sentences):
+        # 破折号不算「完整收尾」：它可能是作者故意截断，也可能是字数窗口正好切在这里，
+        # 两者分不清，而误报「页尾没钩子」比漏掉一次截断更糟
+        if sentence.endswith(("。", "！", "？", "…", "”", "」")):
+            return sentence.strip("“”\"' \n")
+    return sentences[-1].strip("“”\"' \n") if sentences else ""
+
+
 def load_extra_risk_words() -> dict[str, tuple[tuple[str, str], ...]]:
     """读作者自己的风险词表：<数据目录>/risk_words.json。
 
@@ -271,7 +301,7 @@ def opening_report(text: str, *, head_chars: int = craft_rules.FIRST_PAGE_CHARS)
         or metrics.explaining_per_1k >= 12
         or metrics.abstract_per_1k >= 14
     )
-    last_sentence = _last_sentence_of(head)
+    last_sentence = _last_complete_sentence(head)
     tail = page_tail_hook(last_sentence)
     return {
         "available": True,
@@ -334,7 +364,9 @@ def page_tail_hook(sentence: str) -> dict[str, Any]:
 def long_description_paragraphs(text: str, *, limit: int = craft_rules.DESCRIPTION_LIMIT) -> list[str]:
     """找出一整段都是描写（无动作、无对白）且超过官方口径长度的段落。
 
-    官方原话：「超过一百字的风景和情绪描写，都要好好琢磨一下，是不是水文了」。
+    官方原话：「超过一百字的风景和情绪描写，都要好好琢磨一下，是不是水文了」——
+    针对的是风景与情绪描写。像「三十斤粟米两块灵石，一尺粗棉布半块」这种算账，
+    数字密集、信息在推进，不该被当成水文，所以这里对有具体数目/量词的段落放行。
     """
     found: list[str] = []
     for paragraph in (text or "").split("\n"):
@@ -345,13 +377,23 @@ def long_description_paragraphs(text: str, *, limit: int = craft_rules.DESCRIPTI
             continue
         if style_service._has_story_action(body):
             continue
+        if len(style_service._CONCRETE_NUMBER_RE.findall(body)) >= 3 and any(
+            marker in body for marker in ("灵石", "文钱", "铜钱", "斤", "两", "尺", "斗", "枚")
+        ):
+            continue  # 算账、计量、价格这类叙事，不是风景或情绪描写
         found.append(body)
     return found
 
 
 def _platform_rule_mapping(report: dict[str, Any]) -> list[dict[str, Any]]:
-    """把已有的文风指标映射到平台点名的四条低质规则上。"""
-    codes = {issue["code"] for issue in report.get("issues", [])}
+    """把已有的文风指标映射到平台点名的四条低质规则上。
+
+    只统计 warning 级的发现，与「检查项清单」保持同一口径 ——
+    否则会出现「规则说命中，清单里却找不到对应那条」的困惑。
+    """
+    codes = {
+        issue["code"] for issue in report.get("issues", []) if issue.get("level") == "warning"
+    }
 
     def hit(*candidates: str) -> str:
         matched = [code for code in candidates if code in codes]
@@ -491,15 +533,16 @@ def check_text(
                 )
             )
 
-    tail = page_tail_hook(_last_sentence_of(content))
+    tail_text = _ending_beat(content)
+    tail = page_tail_hook(tail_text)
     if not tail["strong"]:
         result.checks.append(
             _issue(
                 "ENDING_NO_HOOK",
                 "warning",
-                f"章末缺少钩子（最后一句：「{_last_sentence_of(content)[:40]}」）",
+                f"章末缺少钩子（结尾这一拍：「{tail_text[-40:]}」）",
                 "结尾留一个没答的问题、一次转折或一句截断的话——完读率主要靠这里",
-                excerpt=_last_sentence_of(content),
+                excerpt=tail_text[-60:],
                 rule="CHAPTER_END_HOOK",
             )
         )

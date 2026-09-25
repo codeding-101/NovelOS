@@ -223,7 +223,7 @@ class ClaimVerifier:
             context={"novel_id": novel.id, "content": text, "names": names},
             json_schema=ClaimModelResult.model_json_schema(),
             temperature=0.1,
-            max_tokens=3072,
+            max_tokens=16384,
         )
         response = self.provider.generate(request)
         warnings = list(response.warnings)
@@ -246,7 +246,7 @@ class ClaimVerifier:
                 context=request.context,
                 json_schema=ClaimModelResult.model_json_schema(),
                 temperature=0.0,
-                max_tokens=3072,
+                max_tokens=16384,
             )
             response = self.provider.generate(repair)
             warnings.extend(response.warnings)

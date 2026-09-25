@@ -151,7 +151,7 @@ class StyleCritic:
             },
             json_schema=StyleModelResult.model_json_schema(),
             temperature=0.2,
-            max_tokens=3072,
+            max_tokens=8192,
         )
         response = self.provider.generate(request)
         warnings = list(response.warnings)
@@ -174,7 +174,7 @@ class StyleCritic:
                 context=request.context,
                 json_schema=StyleModelResult.model_json_schema(),
                 temperature=0.0,
-                max_tokens=3072,
+                max_tokens=8192,
             )
             response = self.provider.generate(repair)
             warnings.extend(response.warnings)
