@@ -588,6 +588,8 @@ class Fragment(Base):
     realized_excerpt: Mapped[str] = mapped_column(Text, default="")
     realized_treatment: Mapped[str] = mapped_column(String(16), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+    #: 来源文件路径（从 Obsidian 之类的笔记库导入时记下），用来做幂等导入
+    source_path: Mapped[str] = mapped_column(String(512), default="", server_default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

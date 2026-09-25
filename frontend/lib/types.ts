@@ -1289,3 +1289,72 @@ export interface ReaderMetricRaw {
   raw: { line?: string };
   recorded_at: string | null;
 }
+
+// --------------------------------------------------------------------------- V0.9 Obsidian 对接
+/** 探测到的一个本地笔记库；id 用来做列表 key。 */
+export interface DetectedVault {
+  id: string;
+  path: string;
+  exists: boolean;
+  /** 是否是 Obsidian 当前打开的那个库。 */
+  open: boolean;
+}
+
+/** 对接状态；GET /api/obsidian 与 POST /api/obsidian 返回同一结构。 */
+export interface ObsidianStatus {
+  connected: boolean;
+  vault: string;
+  inbox: string;
+  inbox_exists: boolean;
+  inbox_notes: number;
+  export_dir: string;
+  export_exists: boolean;
+  total_notes: number;
+  /** 之前导出过、并在笔记库里登记的篇数。 */
+  exported: number;
+  /** 探测到的库列表；没装 Obsidian 时是空数组。 */
+  detected: DetectedVault[];
+  /** 可直接展示给作者的提示，可能是「收件箱不存在」这类可执行建议。 */
+  message: string;
+}
+
+/** 改对接配置；只传要改的字段，其余保持不变。 */
+export interface ObsidianConfigBody {
+  vault?: string;
+  inbox?: string;
+  export_dir?: string;
+  tags?: string[];
+}
+
+/** 从笔记库收件箱导入素材。 */
+export interface ObsidianImportBody {
+  vault?: string;
+  inbox?: string;
+  tags?: string[];
+  limit?: number;
+}
+
+export interface ObsidianImportResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  /** 本次涉及的笔记文件路径。 */
+  notes: string[];
+  message: string;
+}
+
+/** 把设定库导出成带双链的笔记；subdir 为空时用已保存的导出目录。 */
+export interface ObsidianExportBody {
+  vault?: string;
+  subdir?: string;
+}
+
+export interface ObsidianExportResult {
+  written: number;
+  conflicts: number;
+  files: string[];
+  /** 作者在库里改过、未被覆盖而是另存的 .conflict.md。 */
+  conflict_files: string[];
+  directory: string;
+  message: string;
+}

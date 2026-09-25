@@ -26,6 +26,7 @@ from app.routers import (
     fragments,
     insight,
     novels,
+    obsidian,
     plans,
     publish,
     quality,
@@ -42,7 +43,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="NovelOS V0.8",
+    title="NovelOS V0.9",
     description=(
         "中文长篇小说 AI 辅助创作系统：长期记忆 + Canon 一致性守卫。"
         "AI 只能提出 PROPOSED 事实，只有作者确认后才升级为 CANON。"
@@ -77,13 +78,15 @@ app.include_router(publish.novel_router)
 app.include_router(publish.chapter_router)
 app.include_router(publish.rules_router)
 app.include_router(reader.novel_router)
+app.include_router(obsidian.root_router)
+app.include_router(obsidian.novel_router)
 app.include_router(ai.router)
 
 
 @app.get("/", include_in_schema=False)
 def index() -> dict:
     return {
-        "name": "NovelOS V0.8",
+        "name": "NovelOS V0.9",
         "version": __version__,
         "docs": "/docs",
         "health": "/api/health",

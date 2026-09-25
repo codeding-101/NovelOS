@@ -32,6 +32,10 @@ ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("chapter_words_max", "INTEGER NOT NULL DEFAULT 3000"),
         ("daily_words_target", "INTEGER NOT NULL DEFAULT 4000"),
     ],
+    "fragments": [
+        # V0.9：来源文件路径（从笔记库导入的碎片据此幂等去重）
+        ("source_path", "TEXT DEFAULT ''"),
+    ],
 }
 
 SCHEMA_VERSION = "0.5"

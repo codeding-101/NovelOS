@@ -45,6 +45,8 @@ class Settings:
         default_factory=lambda: _env_path("NOVELOS_DB_PATH", DEFAULT_DATA_DIR / "novelos.db")
     )
     ai_provider: str = field(default_factory=lambda: _env_str("NOVELOS_AI_PROVIDER", "deepseek"))
+    #: Obsidian 笔记库路径（不填就从 Obsidian 自己的配置里探测）
+    obsidian_vault: str = field(default_factory=lambda: _env_str("NOVELOS_OBSIDIAN_VAULT", ""))
     deepseek_api_key: str = field(default_factory=lambda: _env_str("DEEPSEEK_API_KEY", ""))
     deepseek_base_url: str = field(
         default_factory=lambda: _env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com")

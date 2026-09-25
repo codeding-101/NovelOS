@@ -33,6 +33,12 @@ import type {
   InvariantReport,
   Novel,
   NovelStats,
+  ObsidianConfigBody,
+  ObsidianExportBody,
+  ObsidianExportResult,
+  ObsidianImportBody,
+  ObsidianImportResult,
+  ObsidianStatus,
   PlanGenerateResponse,
   ProviderInfo,
   PublishCheck,
@@ -504,4 +510,24 @@ export const api = {
   // ------------------------------------------------------------------ 写作规则知识库
   /** 全部写作规则与出处；路径不在 /novels/{id} 下。 */
   craftRules: () => request<CraftRule[]>("/craft-rules"),
+
+  // ------------------------------------------------------------------ V0.9 Obsidian 对接
+  /** 看当前连接的笔记库；vault 显式传入时优先于已存配置与自动探测。 */
+  obsidianStatus: (vault?: string) =>
+    request<ObsidianStatus>(`/obsidian${vault ? `?${query({ vault })}` : ""}`),
+  /** 改库路径／收件箱／导出目录／导入标签，返回改后的状态。 */
+  obsidianConfig: (body: ObsidianConfigBody) =>
+    request<ObsidianStatus>("/obsidian", { method: "POST", ...json(body) }),
+  /** 把收件箱里的笔记导入成想法碎片；幂等，同一篇重复导入只更新正文。 */
+  importFromVault: (novelId: string, body: ObsidianImportBody = {}) =>
+    request<ObsidianImportResult>(`/novels/${novelId}/obsidian/import`, {
+      method: "POST",
+      ...json(body),
+    }),
+  /** 把设定库导出成带双链的笔记；你在库里改过的那篇不覆盖，另存 .conflict.md。 */
+  exportToVault: (novelId: string, body: ObsidianExportBody = {}) =>
+    request<ObsidianExportResult>(`/novels/${novelId}/obsidian/export`, {
+      method: "POST",
+      ...json(body),
+    }),
 };

@@ -1676,3 +1676,56 @@ class ReaderAnalysisOut(BaseModel):
     false_alarms: list[dict[str, Any]] = Field(default_factory=list)
     drop_chapters: list[dict[str, Any]] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- Obsidian 对接（V0.9）
+class ObsidianConfigRequest(BaseModel):
+    """改 Obsidian 对接配置；只传要改的字段。"""
+
+    vault: str | None = None
+    inbox: str | None = None
+    export_dir: str | None = None
+    tags: list[str] | None = None
+
+
+class ObsidianStatusOut(BaseModel):
+    connected: bool = False
+    vault: str = ""
+    inbox: str = ""
+    inbox_exists: bool = False
+    inbox_notes: int = 0
+    export_dir: str = ""
+    export_exists: bool = False
+    total_notes: int = 0
+    exported: int = 0
+    detected: list[dict[str, Any]] = Field(default_factory=list)
+    message: str = ""
+
+
+class VaultImportRequest(BaseModel):
+    vault: str | None = None
+    inbox: str | None = None
+    tags: list[str] | None = None
+    limit: int = Field(default=500, ge=1, le=5000)
+
+
+class VaultImportResult(BaseModel):
+    imported: int = 0
+    updated: int = 0
+    skipped: int = 0
+    notes: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class VaultExportRequest(BaseModel):
+    vault: str | None = None
+    subdir: str | None = None
+
+
+class VaultExportResult(BaseModel):
+    written: int = 0
+    conflicts: int = 0
+    files: list[str] = Field(default_factory=list)
+    conflict_files: list[str] = Field(default_factory=list)
+    directory: str = ""
+    message: str = ""

@@ -9,6 +9,9 @@ import type {
   FragmentKind,
   FragmentStats,
   FragmentStatus,
+  ObsidianExportResult,
+  ObsidianImportResult,
+  ObsidianStatus,
 } from "@/lib/types";
 
 interface Props {
@@ -138,6 +141,118 @@ export function FragmentBoard({
   const [intentChapter, setIntentChapter] = useState("");
   const [intentView, setIntentView] = useState<ChapterIntent | null>(null);
   const [intentLoading, setIntentLoading] = useState(false);
+
+  // Obsidian 对接
+  const [obsidian, setObsidian] = useState<ObsidianStatus | null>(null);
+  const [obsidianLoading, setObsidianLoading] = useState(false);
+  const [obsidianBusy, setObsidianBusy] = useState(false);
+  const [obsidianError, setObsidianError] = useState("");
+  const [vaultInput, setVaultInput] = useState("");
+  const [inboxInput, setInboxInput] = useState("素材");
+  const [exportInput, setExportInput] = useState("NovelOS");
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importResult, setImportResult] = useState<ObsidianImportResult | null>(null);
+  const [exportResult, setExportResult] = useState<ObsidianExportResult | null>(null);
+
+  const applyObsidianStatus = useCallback((status: ObsidianStatus) => {
+    setObsidian(status);
+    setVaultInput(status.vault ?? "");
+    setInboxInput(status.inbox || "素材");
+    setExportInput(status.export_dir || "NovelOS");
+  }, []);
+
+  const loadObsidian = useCallback(async () => {
+    setObsidianLoading(true);
+    try {
+      applyObsidianStatus(await api.obsidianStatus());
+      setObsidianError("");
+    } catch (error) {
+      setObsidianError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setObsidianLoading(false);
+    }
+  }, [applyObsidianStatus]);
+
+  useEffect(() => {
+    void loadObsidian();
+  }, [loadObsidian]);
+
+  async function connectVault(path: string) {
+    if (!path.trim()) return;
+    setObsidianBusy(true);
+    setError("");
+    try {
+      const status = await api.obsidianConfig({ vault: path.trim() });
+      applyObsidianStatus(status);
+      setObsidianError("");
+      setStatus(status.message || `已连接 ${path}`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setObsidianBusy(false);
+    }
+  }
+
+  async function saveObsidianSettings() {
+    const patch: { vault?: string; inbox?: string; export_dir?: string } = {};
+    if (vaultInput.trim()) patch.vault = vaultInput.trim();
+    if (inboxInput.trim()) patch.inbox = inboxInput.trim();
+    if (exportInput.trim()) patch.export_dir = exportInput.trim();
+    if (Object.keys(patch).length === 0) {
+      setError("至少填一项再保存");
+      return;
+    }
+    setObsidianBusy(true);
+    setError("");
+    try {
+      const status = await api.obsidianConfig(patch);
+      applyObsidianStatus(status);
+      setStatus(status.message || "Obsidian 设置已保存");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setObsidianBusy(false);
+    }
+  }
+
+  async function importNotes() {
+    setImporting(true);
+    setError("");
+    setImportResult(null);
+    try {
+      const result = await api.importFromVault(novelId, {
+        ...(vaultInput.trim() ? { vault: vaultInput.trim() } : {}),
+        ...(inboxInput.trim() ? { inbox: inboxInput.trim() } : {}),
+      });
+      setImportResult(result);
+      setStatus(`${result.message}｜本次涉及笔记 ${result.notes.length} 篇`);
+      // 导入会新增/更新碎片，走面板现有的刷新路径
+      await afterChange();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function exportBible() {
+    setExporting(true);
+    setError("");
+    setExportResult(null);
+    try {
+      const result = await api.exportToVault(novelId, {
+        ...(vaultInput.trim() ? { vault: vaultInput.trim() } : {}),
+        ...(exportInput.trim() ? { subdir: exportInput.trim() } : {}),
+      });
+      setExportResult(result);
+      setStatus(result.message || "已导出设定库");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -388,6 +503,178 @@ export function FragmentBoard({
 
   return (
     <div>
+      <div className="issue">
+        <div className="issue-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          Obsidian 对接
+          <span className="spacer" />
+          <button onClick={() => void loadObsidian()} disabled={obsidianLoading}>
+            {obsidianLoading ? "读取中…" : "刷新状态"}
+          </button>
+        </div>
+
+        {obsidianError && <div className="hint error-text">状态读取失败：{obsidianError}</div>}
+
+        {obsidian?.connected ? (
+          <div className="hint" style={{ wordBreak: "break-all" }}>
+            已连接 <b>{obsidian.vault}</b>
+          </div>
+        ) : (
+          <>
+            <div className="hint" style={{ wordBreak: "break-all" }}>
+              {obsidian?.message || (obsidianLoading ? "正在读取状态…" : "还没有连接笔记库。")}
+            </div>
+            {obsidian && obsidian.detected.length > 0 && (
+              <div className="field-row" style={{ marginTop: 4 }}>
+                {obsidian.detected.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => void connectVault(item.path)}
+                    disabled={obsidianBusy}
+                    style={{ wordBreak: "break-all", textAlign: "left", maxWidth: "100%" }}
+                  >
+                    {item.open ? "用当前打开的库：" : "连接："}
+                    {item.path}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {obsidian?.connected && (
+          <div className="field-row" style={{ alignItems: "center", marginTop: 4 }}>
+            <span className="badge">
+              收件箱 {obsidian.inbox || "—"}
+              {obsidian.inbox_exists ? `｜${obsidian.inbox_notes} 篇待导入` : "｜不存在"}
+            </span>
+            <span className={`badge ${obsidian.export_exists ? "ok" : ""}`}>
+              导出目录 {obsidian.export_dir || "—"}
+              {obsidian.export_exists ? "｜已存在" : "｜待创建"}
+            </span>
+            <span className="badge">库里共 {obsidian.total_notes} 篇</span>
+            <span className="badge">已导出 {obsidian.exported} 篇</span>
+          </div>
+        )}
+
+        <div className="field-row" style={{ alignItems: "center", marginTop: 6 }}>
+          <button
+            className="primary"
+            onClick={() => void importNotes()}
+            disabled={importing || exporting || !obsidian?.connected}
+          >
+            {importing ? "导入中…" : "从笔记库导入素材"}
+          </button>
+          <button
+            onClick={() => void exportBible()}
+            disabled={importing || exporting || !obsidian?.connected}
+          >
+            {exporting ? "导出中…" : "导出设定库到笔记库"}
+          </button>
+        </div>
+
+        {importResult && (
+          <div className="hint" style={{ marginTop: 4 }}>
+            已导入 {importResult.imported} 条、更新 {importResult.updated} 条、未变{" "}
+            {importResult.skipped} 条｜涉及笔记 {importResult.notes.length} 篇
+            {importResult.notes.length > 0 && (
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ cursor: "pointer" }}>看是哪些笔记</summary>
+                {importResult.notes.map((note) => (
+                  <div key={note} style={{ wordBreak: "break-all" }}>
+                    {note}
+                  </div>
+                ))}
+              </details>
+            )}
+          </div>
+        )}
+
+        {exportResult && (
+          <div className="hint" style={{ marginTop: 4 }}>
+            已写入 {exportResult.written} 篇
+            {exportResult.directory ? `到 ${exportResult.directory}` : ""}
+            {exportResult.files.length > 0 && (
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ cursor: "pointer" }}>看这 {exportResult.files.length} 个文件</summary>
+                {exportResult.files.map((file) => (
+                  <div key={file} style={{ wordBreak: "break-all" }}>
+                    {file}
+                  </div>
+                ))}
+              </details>
+            )}
+          </div>
+        )}
+
+        {exportResult && exportResult.conflicts > 0 && (
+          <div className="issue warning" style={{ marginTop: 6 }}>
+            <div className="issue-title">
+              有 {exportResult.conflicts} 篇你在库里改过，已另存为 .conflict.md（没有覆盖你的改动）
+            </div>
+            {exportResult.conflict_files.map((file) => (
+              <div key={file} className="hint" style={{ wordBreak: "break-all" }}>
+                {file}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <details style={{ marginTop: 6 }}>
+          <summary>设置</summary>
+          <div className="field-row" style={{ marginTop: 6 }}>
+            <label style={{ flex: "3 1 240px" }}>
+              库路径
+              <input
+                value={vaultInput}
+                placeholder="留空则自动探测；也可手填库的绝对路径"
+                onChange={(event) => setVaultInput(event.target.value)}
+              />
+            </label>
+            <button
+              className="ghost"
+              style={{ flex: "0 0 auto", alignSelf: "flex-end" }}
+              onClick={() => setVaultInput(obsidian?.vault ?? "")}
+              disabled={!obsidian?.vault}
+            >
+              用探测到的库
+            </button>
+          </div>
+          <div className="field-row" style={{ marginTop: 6 }}>
+            <label>
+              收件箱目录名
+              <input
+                value={inboxInput}
+                placeholder="素材"
+                onChange={(event) => setInboxInput(event.target.value)}
+              />
+            </label>
+            <label>
+              导出目录名
+              <input
+                value={exportInput}
+                placeholder="NovelOS"
+                onChange={(event) => setExportInput(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="field-row" style={{ marginTop: 6, alignItems: "center" }}>
+            <button
+              className="primary"
+              onClick={() => void saveObsidianSettings()}
+              disabled={obsidianBusy}
+            >
+              {obsidianBusy ? "保存中…" : "保存设置"}
+            </button>
+            <span className="hint">存进数据目录的 integrations.json。</span>
+          </div>
+        </details>
+
+        <div className="hint" style={{ marginTop: 4 }}>
+          笔记放进收件箱就会变成碎片；导出的是人物／事件／伏笔／Canon／世界观／大纲，带双链，
+          你在库里改过的笔记不会被覆盖。
+        </div>
+      </div>
+
       <div className="issue">
         <div className="issue-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           想法碎片
