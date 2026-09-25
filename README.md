@@ -56,8 +56,10 @@ docker compose logs -f backend     # 看日志；docker compose down 停掉（�
 
 镜像里两个容易踩的点已经处理好：后端第一次启动会自己在空卷里建库并跑迁移；
 前端用 Next 的 standalone 产物，`/api` 转发指向容器内的后端服务名（构建时就写进产物里）。
-要挂自己的 OpenAI 兼容端点（本地 Ollama、公司网关等）看根目录 `.env.example` 里的
-`NOVELOS_PROVIDERS`，容器里访问宿主机要用 `host.docker.internal`。
+CI 另外会构建这两个镜像并跑一遍冒烟（起容器、等健康检查、验证前端转发与写路径），
+所以镜像有没有问题在推送时就能看到，不用等部署。要挂自己的 OpenAI 兼容端点
+（本地 Ollama、公司网关等）看根目录 `.env.example` 里的 `NOVELOS_PROVIDERS`，
+容器里访问宿主机要用 `host.docker.internal`。
 
 不想用 Docker 就分别起：后端 `uvicorn app.main:app --host 0.0.0.0 --port 8000`，
 前端 `npm run build && npm run start`，用 `NOVELOS_BACKEND_URL` 指到后端地址。
