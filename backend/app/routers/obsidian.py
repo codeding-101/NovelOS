@@ -14,6 +14,8 @@ from app.schemas import (
     VaultImportResult,
     VaultExportRequest,
     VaultExportResult,
+    VaultSyncRequest,
+    VaultSyncResult,
 )
 from app.services import obsidian_service
 
@@ -67,6 +69,19 @@ def import_from_vault(
         inbox=payload.inbox,
         tags=payload.tags,
         limit=payload.limit,
+    )
+    session.commit()
+    return result
+
+
+@novel_router.post("/{novel_id}/obsidian/sync-outline", response_model=VaultSyncResult)
+def sync_outline_from_vault(
+    novel_id: str, payload: VaultSyncRequest, session: Session = Depends(get_session)
+) -> dict:
+    """把库里《书名》/大纲.md 同步进系统。作者在 Obsidian 里改大纲后点一下即可。"""
+    novel = _novel(session, novel_id)
+    result = obsidian_service.sync_outline(
+        session, novel, vault_path=payload.vault, note_name=payload.note or "大纲.md"
     )
     session.commit()
     return result

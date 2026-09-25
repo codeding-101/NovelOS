@@ -138,6 +138,66 @@ def test_vault_status_reports_inbox_and_config(session, novel, tmp_path, monkeyp
     assert status["inbox_notes"] == 2
 
 
+def test_sync_outline_reads_the_note_in_a_book_named_folder(session, novel, tmp_path, monkeypatch):
+    """作者在 Obsidian 里改大纲 → 同步进系统。书名号文件夹与裸书名都要认。"""
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(obsidian_service, "resolve_vault", lambda explicit=None: vault)
+    folder = vault / f"《{novel.title}》"
+    folder.mkdir()
+    (folder / "大纲.md").write_text("# 新大纲\n\n第一卷：起。\n", encoding="utf-8")
+
+    novel.outline = "旧大纲"
+    session.flush()
+    result = obsidian_service.sync_outline(session, novel, vault_path=str(vault))
+    session.commit()
+    assert result["synced"] is True and result["changed"] is True
+    assert novel.outline.startswith("# 新大纲")
+
+    again = obsidian_service.sync_outline(session, novel, vault_path=str(vault))
+    assert again["synced"] is True and again["changed"] is False, "一致时不重复写"
+
+    bare = vault / novel.title
+    bare.mkdir()
+    (bare / "大纲.md").write_text("裸书名文件夹里的版本", encoding="utf-8")
+    (folder / "大纲.md").unlink()
+    third = obsidian_service.sync_outline(session, novel, vault_path=str(vault))
+    assert third["changed"] is True and novel.outline == "裸书名文件夹里的版本"
+
+
+def test_sync_outline_reports_missing_note(session, novel, tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(obsidian_service, "resolve_vault", lambda explicit=None: vault)
+    result = obsidian_service.sync_outline(session, novel, vault_path=str(vault))
+    assert result["synced"] is False
+    assert "没找到" in result["message"]
+
+
+def test_sync_outline_ignores_empty_note(session, novel, tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(obsidian_service, "resolve_vault", lambda explicit=None: vault)
+    folder = vault / f"《{novel.title}》"
+    folder.mkdir()
+    (folder / "大纲.md").write_text("   \n", encoding="utf-8")
+    novel.outline = "别被清空"
+    session.flush()
+    result = obsidian_service.sync_outline(session, novel, vault_path=str(vault))
+    assert result["synced"] is False and novel.outline == "别被清空", "空笔记不能把大纲清掉"
+
+
+def test_sync_outline_api(client, novel, tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    monkeypatch.setattr(obsidian_service, "resolve_vault", lambda explicit=None: vault)
+    folder = vault / f"《{novel.title}》"
+    folder.mkdir()
+    (folder / "大纲.md").write_text("接口同步过来的大纲", encoding="utf-8")
+
+    response = client.post(f"/api/novels/{novel.id}/obsidian/sync-outline", json={"vault": str(vault)})
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["synced"] is True and payload["changed"] is True
+    assert client.get(f"/api/novels/{novel.id}").json()["outline"] == "接口同步过来的大纲"
+
+
 def test_api_import_export_and_config(client, novel, tmp_path, monkeypatch):
     vault = _make_vault(tmp_path)
     monkeypatch.setattr(obsidian_service, "resolve_vault", lambda explicit=None: vault)

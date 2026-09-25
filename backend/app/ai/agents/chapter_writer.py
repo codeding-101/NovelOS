@@ -38,6 +38,21 @@ from app.timeutil import count_words
 _TITLE_LINE_RE = re.compile(r"^#+\s*(.*)$")
 
 
+def _is_literal_requirement(item: str | None) -> bool:
+    """这条「必须出现」是能在正文里逐字找到的具体内容吗？
+
+    人名、台词、器物、地名这类短且不含说明性标点的算；
+    「只给轮廓，不给名字全解」这种描述性要求不算 —— 它该由人对照检查，
+    拿去做字符串比较只会每次都报「未找到」。
+    """
+    text = (item or "").strip()
+    # 14 字是「名字/台词/物件」的量级；超出的多半是描述性要求。
+    # 判断错的方向也是安全的：把描述当字面最多少报一次，把字面当描述只是不校验。
+    if not text or len(text) > 14:
+        return False
+    return not any(mark in text for mark in "（）()，。；：、“”「」…—／/")
+
+
 class ChapterWriter:
     def __init__(self, provider: AIProvider) -> None:
         self.provider = provider
@@ -277,9 +292,19 @@ class ChapterWriter:
         for item in request.forbidden:
             if item and item in body:
                 warnings.append(f"生成正文中出现了禁止内容「{item}」，该草稿需人工修改后才能采用")
-        for item in request.must_include:
-            if item and item not in body:
+        # 「必须出现」只在它是一条**具体的东西**（人名、台词、物件）时才能逐字校验。
+        # 规划里给的往往是描述性要求（「老人先答前半句，被追问后才补上后半句」），
+        # 拿去比字面只会每次都报未找到 —— 那是噪音，不是发现。
+        literal_items = [item for item in request.must_include if _is_literal_requirement(item)]
+        described = len([item for item in request.must_include if item and not _is_literal_requirement(item)])
+        for item in literal_items:
+            if item not in body:
                 warnings.append(f"生成正文中未找到必须出现的内容「{item}」")
+        if described:
+            warnings.append(
+                f"另有 {described} 条「必须出现」是描述性要求（不是字面内容），未做逐字校验，"
+                "请人工对照本章目标确认"
+            )
         if request.target_words and abs(word_count - request.target_words) / request.target_words > 0.25:
             warnings.append(f"生成字数 {word_count} 与目标 {request.target_words} 偏差超过 25%")
 

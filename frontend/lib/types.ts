@@ -1358,3 +1358,18 @@ export interface ObsidianExportResult {
   directory: string;
   message: string;
 }
+
+/** 把库里《书名》/大纲.md 同步进系统（作者在 Obsidian 里改完大纲后点一下）。 */
+export interface ObsidianSyncBody {
+  vault?: string;
+  note?: string;
+}
+
+export interface ObsidianSyncResult {
+  synced: boolean;
+  /** 与系统里那份是否不同；false 表示本来就一致。 */
+  changed: boolean;
+  path: string;
+  chars: number;
+  message: string;
+}

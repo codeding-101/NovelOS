@@ -301,6 +301,64 @@ def import_notes(
     }
 
 
+def sync_outline(
+    session: Session,
+    novel: Novel,
+    *,
+    vault_path: str | None = None,
+    note_name: str = "大纲.md",
+) -> dict[str, Any]:
+    """把库里那本书的「大纲.md」同步进 novel.outline。
+
+    作者习惯在 Obsidian 里改大纲，而系统读的是数据库里那份 —— 不同步就会出现「我改了但写作没跟着变」。
+    这是唯一一份**从笔记库流向系统**的文档，所以做成显式动作，不自动覆盖。
+    """
+    vault = resolve_vault(vault_path)
+    if vault is None:
+        return {"synced": False, "changed": False, "path": "", "chars": 0, "message": "没有可用的 Obsidian 库"}
+
+    title = (novel.title or "").strip()
+    candidates = [
+        vault / f"《{title}》" / note_name,
+        vault / title / note_name,
+    ]
+    note = next((path for path in candidates if path.exists()), None)
+    if note is None:
+        looked = "、".join(str(path) for path in candidates)
+        return {
+            "synced": False,
+            "changed": False,
+            "path": "",
+            "chars": 0,
+            "message": f"在库里没找到《{title}》/{note_name}（找过：{looked}）",
+        }
+
+    text = note.read_text(encoding="utf-8").strip()
+    if not text:
+        return {
+            "synced": False,
+            "changed": False,
+            "path": str(note),
+            "chars": 0,
+            "message": f"{note.name} 是空的，没有同步",
+        }
+    changed = text != (novel.outline or "").strip()
+    if changed:
+        novel.outline = text
+        session.flush()
+    return {
+        "synced": True,
+        "changed": changed,
+        "path": str(note),
+        "chars": len(text),
+        "message": (
+            f"已从 {note.parent.name}/{note.name} 同步进系统（{len(text)} 字）"
+            if changed
+            else f"库里那份与系统里的一致（{len(text)} 字），没有改动"
+        ),
+    }
+
+
 # --------------------------------------------------------------------------- 设定库 → vault
 def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]

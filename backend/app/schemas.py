@@ -1729,3 +1729,18 @@ class VaultExportResult(BaseModel):
     conflict_files: list[str] = Field(default_factory=list)
     directory: str = ""
     message: str = ""
+
+
+class VaultSyncRequest(BaseModel):
+    """把库里的大纲同步进系统。"""
+
+    vault: str | None = None
+    note: str | None = None
+
+
+class VaultSyncResult(BaseModel):
+    synced: bool = False
+    changed: bool = False
+    path: str = ""
+    chars: int = 0
+    message: str = ""

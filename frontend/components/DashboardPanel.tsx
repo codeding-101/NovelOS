@@ -84,6 +84,7 @@ export function DashboardPanel({
   const [retrieval, setRetrieval] = useState<RetrievalResult | null>(null);
   const [setting, setSetting] = useState<SettingDraft | null>(null);
   const [savingSetting, setSavingSetting] = useState(false);
+  const [syncingOutline, setSyncingOutline] = useState(false);
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState("");
   const [exporting, setExporting] = useState<"txt" | "md" | null>(null);
@@ -109,8 +110,24 @@ export function DashboardPanel({
     setSetting({ ...settingDraft, ...patch });
   }
 
-  async function saveSetting() {
-    if (!setting) return;
+  async function syncOutline() {
+    setSyncingOutline(true);
+    setError("");
+    try {
+      const result = await api.syncOutlineFromVault(novelId, {});
+      const updated = await api.getNovel(novelId);
+      onNovelSaved(updated);
+      setSetting(null);
+      setStatus(result.message);
+      if (!result.synced) setError(result.message);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSyncingOutline(false);
+    }
+  }
+
+  async function saveSetting() {    if (!setting) return;
     let numbers: {
       chapter_words_min?: number;
       chapter_words_max?: number;
@@ -336,6 +353,9 @@ export function DashboardPanel({
           </button>
           <button onClick={() => setSetting(null)} disabled={!settingDirty}>
             撤销改动
+          </button>
+          <button onClick={() => void syncOutline()} disabled={syncingOutline}>
+            {syncingOutline ? "同步中…" : "从笔记库同步大纲"}
           </button>
           {settingDirty && <span className="hint">有未保存的改动</span>}
         </div>

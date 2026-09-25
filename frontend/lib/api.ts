@@ -39,6 +39,8 @@ import type {
   ObsidianImportBody,
   ObsidianImportResult,
   ObsidianStatus,
+  ObsidianSyncBody,
+  ObsidianSyncResult,
   PlanGenerateResponse,
   ProviderInfo,
   PublishCheck,
@@ -527,6 +529,12 @@ export const api = {
   /** 把设定库导出成带双链的笔记；你在库里改过的那篇不覆盖，另存 .conflict.md。 */
   exportToVault: (novelId: string, body: ObsidianExportBody = {}) =>
     request<ObsidianExportResult>(`/novels/${novelId}/obsidian/export`, {
+      method: "POST",
+      ...json(body),
+    }),
+  /** 把库里《书名》/大纲.md 同步进系统：在 Obsidian 里改完大纲点这个。 */
+  syncOutlineFromVault: (novelId: string, body: ObsidianSyncBody = {}) =>
+    request<ObsidianSyncResult>(`/novels/${novelId}/obsidian/sync-outline`, {
       method: "POST",
       ...json(body),
     }),
