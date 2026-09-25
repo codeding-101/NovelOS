@@ -8,6 +8,8 @@
 
 当前版本 0.6.0。后端 FastAPI + SQLite，前端 Next.js 15，默认模型 DeepSeek Flash（可换任意 OpenAI 兼容端点）。
 
+![工作台](docs/images/workbench.png)
+
 ## 跑起来
 
 后端：
@@ -97,6 +99,11 @@ Canon 面板按状态过滤、显示每条事实的生效章与失效章，还�
 质量面板建文风基线、评草稿、跑不变量、维护承诺、设定断言核对、文风锁定与逐章漂移；
 总览面板给每章健康矩阵、错误统计、伏笔欠账、向量索引。窄屏（<1100px）改成单列堆叠。
 
+设定断言核对长这样：贴一段草稿或选一章，冲突的每一条都给出原文片段和依据（Canon 事实带章号，
+世界观规则给规则原文），查无此设定的一律落在「待确认」。
+
+![设定断言核对](docs/images/claim-check.png)
+
 ## 测试
 
 ```powershell
@@ -104,6 +111,8 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest                    # 230 passed（跳过的是需要真实模型的用例）
 $env:RUN_LIVE="1"; .\.venv\Scripts\python.exe -m pytest tests\test_live_deepseek.py   # 19 个真实模型用例
 ```
+
+CI 跑的就是这套离线用例（`.github/workflows/tests.yml`，不需要密钥，离线提供者兜底）。
 
 种子小说《剑起青云》20 章里埋了 3 处矛盾：第 14 章换了佩剑（该报事实冲突）、
 第 15 章已死的赵铁山现身出手（该报死者复现）、第 18 章的血案日期与 Canon 差一个月（该报时间倒置）。
