@@ -301,8 +301,11 @@ def opening_report(text: str, *, head_chars: int = craft_rules.FIRST_PAGE_CHARS)
         or metrics.explaining_per_1k >= 12
         or metrics.abstract_per_1k >= 14
     )
+    # 页尾也按「这一拍」判（最后约 150 字），而不是只看最后一句：
+    # 钩子常常落在收尾那句之前，只看末句会把「有钩子」误报成「没钩子」
+    tail_text = _ending_beat(head, window=150)
+    tail = page_tail_hook(tail_text)
     last_sentence = _last_complete_sentence(head)
-    tail = page_tail_hook(last_sentence)
     return {
         "available": True,
         "chars": len(head),
