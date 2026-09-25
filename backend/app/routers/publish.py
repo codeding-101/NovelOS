@@ -78,6 +78,8 @@ def publish_check_text(
         target_words=target,
         style_profile=style_service.default_profile(session, novel.id),
         voice_profile=style_service.default_voice_profile(session, novel.id),
+        # 查的是一章已入库的正文时，标题在单独字段里（导出时才补），首行本来就不是标题行
+        expect_title_line=chapter is None,
     )
     payload_out = report.to_dict()
     if chapter is not None:
