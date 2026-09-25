@@ -15,12 +15,14 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import Chapter, Novel
 from app.services import craft_rules, style_service
 from app.timeutil import count_words, split_sentences
@@ -135,27 +137,58 @@ def _last_sentence_of(text: str) -> str:
     return sentences[-1].strip("“”\"' \n") if sentences else ""
 
 
+def load_extra_risk_words() -> dict[str, tuple[tuple[str, str], ...]]:
+    """读作者自己的风险词表：<数据目录>/risk_words.json。
+
+    形如 ``{"站外引流": ["加微", "私信领取"], "自定分类": [["词", "建议"]]}``。
+    平台口径会变、题材各有各的雷，所以留了这个口子 —— 不用改代码。
+    """
+    path = settings.data_dir / "risk_words.json"
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    extra: dict[str, tuple[tuple[str, str], ...]] = {}
+    for category, entries in raw.items():
+        if not isinstance(entries, list):
+            continue
+        collected: list[tuple[str, str]] = []
+        for entry in entries:
+            if isinstance(entry, str) and entry.strip():
+                collected.append((entry.strip(), "作者自己加的词：确认上下文是否会被判违规"))
+            elif isinstance(entry, list) and entry and isinstance(entry[0], str):
+                advice = entry[1] if len(entry) > 1 and isinstance(entry[1], str) else "作者自己加的词"
+                collected.append((entry[0].strip(), advice))
+        if collected:
+            extra[str(category)] = tuple(collected)
+    return extra
+
+
 def find_risk_words(text: str) -> list[dict[str, Any]]:
-    """扫审核风险词，给出分类、上下文与建议。"""
+    """扫审核风险词，给出分类、上下文与建议（内置词表 + 作者扩展表）。"""
     hits: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
-    for category, entries in DEFAULT_RISK_WORDS.items():
-        for word, advice in entries:
-            if word not in text:
-                continue
-            if (category, word) in seen:
-                continue
-            seen.add((category, word))
-            index = text.find(word)
-            start = max(0, index - 18)
-            hits.append(
-                {
-                    "category": category,
-                    "word": word,
-                    "quote": text[start : index + len(word) + 18].replace("\n", " "),
-                    "advice": advice,
-                }
-            )
+    tables = [DEFAULT_RISK_WORDS, load_extra_risk_words()]
+    for table in tables:
+        for category, entries in table.items():
+            for word, advice in entries:
+                if word not in text or (category, word) in seen:
+                    continue
+                seen.add((category, word))
+                index = text.find(word)
+                start = max(0, index - 18)
+                hits.append(
+                    {
+                        "category": category,
+                        "word": word,
+                        "quote": text[start : index + len(word) + 18].replace("\n", " "),
+                        "advice": advice,
+                    }
+                )
     return hits
 
 
@@ -521,13 +554,17 @@ def check_text(
 
 
 def check_chapter(session: Session, chapter: Chapter, *, novel: Novel | None = None) -> dict[str, Any]:
-    """对已入库的章节做发布前检查。"""
+    """对已入库的章节做发布前检查（口径取这本书自己的设置）。"""
     owner = novel or session.get(Novel, chapter.novel_id)
+    target = WORDS_PER_CHAPTER
+    if owner is not None:
+        target = (owner.chapter_words_min, owner.chapter_words_max)
     report = check_text(
         chapter.content or "",
         novel_id=chapter.novel_id,
         chapter_number=chapter.chapter_number,
         title=f"第{chapter.chapter_number}章 {chapter.title or ''}".strip(),
+        target_words=target,
         style_profile=style_service.default_profile(session, chapter.novel_id),
         voice_profile=style_service.default_voice_profile(session, chapter.novel_id),
         # 入库章节的标题在单独字段里（导出时会补），正文首行本来就不是标题行

@@ -50,6 +50,9 @@ class NovelUpdate(BaseModel):
     genre: str | None = None
     worldview: str | None = None
     outline: str | None = None
+    chapter_words_min: int | None = Field(default=None, ge=200, le=20000)
+    chapter_words_max: int | None = Field(default=None, ge=200, le=20000)
+    daily_words_target: int | None = Field(default=None, ge=200, le=100000)
     author: str | None = None
     target_word_count: int | None = Field(default=None, ge=0, le=20_000_000)
 
@@ -62,6 +65,9 @@ class NovelOut(ORMModel):
     genre: str
     worldview: str
     outline: str = ""
+    chapter_words_min: int = 2000
+    chapter_words_max: int = 3000
+    daily_words_target: int = 4000
     author: str
     target_word_count: int
     word_count: int
@@ -1641,3 +1647,32 @@ class StructureViewOut(BaseModel):
     weak_runs: list[StructureWeakRun] = Field(default_factory=list)
     pace_windows: list[StructurePaceWindow] = Field(default_factory=list)
     summary: StructureSummary = Field(default_factory=StructureSummary)
+
+
+# --------------------------------------------------------------------------- 读者数据回环（V0.7）
+class ReaderImportRequest(BaseModel):
+    """粘贴平台后台的章节数据。每行至少要有「章号 + 阅读人数」。"""
+
+    text: str = Field(min_length=1)
+    note: str = ""
+
+
+class ReaderImportResult(BaseModel):
+    imported: int = 0
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+    message: str = ""
+
+
+class ReaderAnalysisOut(BaseModel):
+    novel_id: str = ""
+    title: str = ""
+    chapters: list[dict[str, Any]] = Field(default_factory=list)
+    coverage: dict[str, int] = Field(default_factory=dict)
+    book_completion_rate: float = 0.0
+    weak_mean_completion: float = 0.0
+    ok_mean_completion: float = 0.0
+    verdict: str = ""
+    missed: list[dict[str, Any]] = Field(default_factory=list)
+    false_alarms: list[dict[str, Any]] = Field(default_factory=list)
+    drop_chapters: list[dict[str, Any]] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)

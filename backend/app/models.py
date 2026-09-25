@@ -109,6 +109,10 @@ class Novel(Base):
     worldview: Mapped[str] = mapped_column(Text, default="")
     #: 全书大纲（主线、分卷、人物弧线、结局走向）：作者写在这里的东西，规划与写作必须能看到
     outline: Mapped[str] = mapped_column(Text, default="", server_default="")
+    #: 发布口径：按章长度的期望区间与每日更新目标（默认按番茄免费小说的常见值，作者可改）
+    chapter_words_min: Mapped[int] = mapped_column(Integer, default=2000, server_default="2000")
+    chapter_words_max: Mapped[int] = mapped_column(Integer, default=3000, server_default="3000")
+    daily_words_target: Mapped[int] = mapped_column(Integer, default=4000, server_default="4000")
     author: Mapped[str] = mapped_column(String(64), default="")
     target_word_count: Mapped[int] = mapped_column(Integer, default=1_000_000)
     word_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -635,4 +639,35 @@ class ClaimReport(Base):
     provider: Mapped[str] = mapped_column(String(32), default="")
     model: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReaderMetric(Base):
+    """平台后台的章节数据：读者的实际表现。用来验证我们的判定对不对。
+
+    这一层是「读者是最好的测试人员」逼出来的：没有它，所有阈值都只是我的经验值，
+    谁也说不清「判定偏弱的章」是否真的掉了读者。导入时按 (novel_id, chapter_number) 覆盖，
+    并原样保留粘贴的那一行，便于回溯是从哪张表抄来的。
+    """
+
+    __tablename__ = "reader_metrics"
+    __table_args__ = (
+        UniqueConstraint("novel_id", "chapter_number", name="uq_reader_metric_chapter"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("rdm"))
+    novel_id: Mapped[str] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), index=True)
+    chapter_number: Mapped[int] = mapped_column(Integer, index=True)
+    #: 阅读人数
+    reads: Mapped[int] = mapped_column(Integer, default=0)
+    #: 完读率（0~1）
+    completion_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    #: 追读率 / 留存率（平台口径不一，可空）
+    retention_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: 收益（可空）
+    revenue: Mapped[float | None] = mapped_column(Float, nullable=True)
+    comments: Mapped[int] = mapped_column(Integer, default=0)
+    #: 原样保存导入的那一行
+    raw: Mapped[dict] = mapped_column(JSON, default=dict)
+    note: Mapped[str] = mapped_column(String(200), default="")
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

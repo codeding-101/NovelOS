@@ -27,6 +27,10 @@ ADDITIVE_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "novels": [
         # V0.7：全书大纲（旧库默认空字符串，行为与之前一致）
         ("outline", "TEXT DEFAULT ''"),
+        # V0.7：发布口径（按章长度期望区间与每日更新目标），旧库按番茄常见值回填
+        ("chapter_words_min", "INTEGER NOT NULL DEFAULT 2000"),
+        ("chapter_words_max", "INTEGER NOT NULL DEFAULT 3000"),
+        ("daily_words_target", "INTEGER NOT NULL DEFAULT 4000"),
     ],
 }
 

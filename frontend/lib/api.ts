@@ -36,6 +36,10 @@ import type {
   PlanGenerateResponse,
   ProviderInfo,
   PublishCheck,
+  ReaderAnalysis,
+  ReaderImportBody,
+  ReaderImportResult,
+  ReaderMetricRaw,
   ReindexResult,
   RetrievalHit,
   RetrievalResult,
@@ -472,6 +476,27 @@ export const api = {
   // ------------------------------------------------------------------ V0.7 结构视图
   /** 全书结构视图：逐章信号 + 连续弱区 + 每 5 章的节奏窗口（只读，不落库）。 */
   structure: (novelId: string) => request<StructureView>(`/novels/${novelId}/structure`),
+
+  // ------------------------------------------------------------------ 读者数据回环
+  /** 导入平台后台粘出来的章节数据；一行都认不出来时后端返回 400。 */
+  importReaderMetrics: (novelId: string, body: ReaderImportBody) =>
+    request<ReaderImportResult>(`/novels/${novelId}/reader-metrics`, {
+      method: "POST",
+      ...json(body),
+    }),
+  readerAnalysis: (novelId: string) =>
+    request<ReaderAnalysis>(`/novels/${novelId}/reader-metrics`),
+  /** 已导入的原始行（含 raw.line），用来核对是不是抄错了列。 */
+  readerRaw: (novelId: string) =>
+    request<ReaderMetricRaw[]>(`/novels/${novelId}/reader-metrics/raw`),
+  /** 不带 chapterNumber 时清掉整本。 */
+  clearReaderMetrics: (novelId: string, chapterNumber?: number) =>
+    request<{ deleted: number }>(
+      `/novels/${novelId}/reader-metrics${
+        chapterNumber === undefined ? "" : `?${query({ chapter_number: chapterNumber })}`
+      }`,
+      { method: "DELETE" },
+    ),
 
   // ------------------------------------------------------------------ 写作规则知识库
   /** 全部写作规则与出处；路径不在 /novels/{id} 下。 */

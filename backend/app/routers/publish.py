@@ -68,7 +68,7 @@ def publish_check_text(
     target = (
         (payload.target_words_min, payload.target_words_max)
         if payload.target_words_min and payload.target_words_max
-        else publish_service.WORDS_PER_CHAPTER
+        else (novel.chapter_words_min, novel.chapter_words_max)
     )
     report = publish_service.check_text(
         text,

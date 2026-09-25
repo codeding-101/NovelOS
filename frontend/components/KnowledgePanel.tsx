@@ -6,6 +6,7 @@ import { DashboardPanel } from "@/components/DashboardPanel";
 import { FragmentBoard } from "@/components/FragmentBoard";
 import { PlanPanel } from "@/components/PlanPanel";
 import { QualityPanel } from "@/components/QualityPanel";
+import { ReaderPanel } from "@/components/ReaderPanel";
 import { StructurePanel } from "@/components/StructurePanel";
 import type { AsOfState, AskResponse, Bible, CharacterState, Dashboard, Novel } from "@/lib/types";
 
@@ -19,6 +20,7 @@ type TabKey =
   | "dashboard"
   | "plan"
   | "structure"
+  | "reader"
   | "fragments"
   | "quality"
   | "qa";
@@ -33,6 +35,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "dashboard", label: "总览" },
   { key: "plan", label: "规划" },
   { key: "structure", label: "结构" },
+  { key: "reader", label: "读者" },
   { key: "fragments", label: "碎片" },
   { key: "quality", label: "质量" },
   { key: "qa", label: "QA" },
@@ -152,6 +155,7 @@ export function KnowledgePanel({
     tab !== "dashboard" &&
     tab !== "plan" &&
     tab !== "structure" &&
+    tab !== "reader" &&
     tab !== "fragments" &&
     tab !== "quality";
 
@@ -201,6 +205,15 @@ export function KnowledgePanel({
             provider={provider}
             chaptersVersion={chaptersVersion}
             onRefresh={onRefresh}
+            setStatus={setStatus}
+            setError={setError}
+          />
+        )}
+
+        {tab === "reader" && (
+          <ReaderPanel
+            novelId={novelId}
+            chaptersVersion={chaptersVersion}
             setStatus={setStatus}
             setError={setError}
           />

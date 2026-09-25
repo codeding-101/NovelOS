@@ -7,6 +7,11 @@ export interface Novel {
   worldview: string;
   /** 全书大纲：主线、分卷、人物弧线、结局走向。会进规划与写作的提示词。 */
   outline: string;
+  /** 每章字数区间：发布前检查按它判定是否贴合平台要求。 */
+  chapter_words_min: number;
+  chapter_words_max: number;
+  /** 每日更新目标字数：平台福利按每日有效字数算，默认 4000。 */
+  daily_words_target: number;
   author: string;
   target_word_count: number;
   word_count: number;
@@ -1195,4 +1200,92 @@ export interface StructureView {
   weak_runs: StructureWeakRun[];
   pace_windows: StructurePaceWindow[];
   summary: StructureSummary;
+}
+
+// --------------------------------------------------------------------------- 读者数据回环
+/** 逐章对照里的一章：平台数据 + 我们的判定信号。 */
+export interface ReaderAnalysisChapter {
+  chapter_number: number;
+  title: string;
+  word_count: number;
+  /** 没导入这一章的数据时为 null。 */
+  reads: number | null;
+  completion_rate: number | null;
+  retention_rate: number | null;
+  hook_score: number;
+  advancement_per_1k: number;
+  filler_paragraph_ratio: number;
+  weak: boolean;
+  /** 不达标的原因；空数组表示我们没报警。 */
+  weak_reasons: string[];
+}
+
+/** 漏报：我们没报警，完读率却明显低于全书平均。 */
+export interface ReaderMissedChapter {
+  chapter_number: number;
+  title: string;
+  completion_rate: number;
+  /** 与全书平均完读率的差（百分点，负值表示更低）。 */
+  gap_vs_book: number;
+}
+
+/** 误报：我们报警了，但读者没跑。 */
+export interface ReaderFalseAlarm {
+  chapter_number: number;
+  title: string;
+  completion_rate: number;
+  reasons: string[];
+}
+
+/** 阅读人数相对上一章下降的章。 */
+export interface ReaderDropChapter {
+  chapter_number: number;
+  title: string;
+  reads: number;
+  from_chapter: number;
+  /** 相对上一章的人数变化（-0.25 表示少了四分之一）。 */
+  change: number;
+}
+
+/** 平台数据与规则判定的对照结果。 */
+export interface ReaderAnalysis {
+  novel_id: string;
+  title: string;
+  chapters: ReaderAnalysisChapter[];
+  coverage: { with_data: number; total: number };
+  /** 下面三个都是 0~1 的比例。 */
+  book_completion_rate: number;
+  weak_mean_completion: number;
+  ok_mean_completion: number;
+  /** 一句话结论：我们的判定与读者的实际表现是否相符。 */
+  verdict: string;
+  missed: ReaderMissedChapter[];
+  false_alarms: ReaderFalseAlarm[];
+  drop_chapters: ReaderDropChapter[];
+  suggestions: string[];
+}
+
+/** 导入请求：text 是从平台后台复制的表格。 */
+export interface ReaderImportBody {
+  text: string;
+  note?: string;
+}
+
+export interface ReaderImportResult {
+  imported: number;
+  rows: { chapter_number: number; reads: number; completion_rate: number }[];
+  message: string;
+}
+
+/** 已导入的原始行，用来核对是不是抄错了列。 */
+export interface ReaderMetricRaw {
+  chapter_number: number;
+  reads: number;
+  completion_rate: number;
+  retention_rate: number | null;
+  revenue: number | null;
+  comments: number;
+  /** 粘贴时的原始文本在 raw.line。 */
+  raw: { line?: string };
+  recorded_at: string | null;
 }

@@ -19,7 +19,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.config import settings
 from app.database import init_db
-from app.routers import ai, chapters, entities, fragments, insight, novels, plans, publish, quality
+from app.routers import (
+    ai,
+    chapters,
+    entities,
+    fragments,
+    insight,
+    novels,
+    plans,
+    publish,
+    quality,
+    reader,
+)
 
 
 @asynccontextmanager
@@ -31,7 +42,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="NovelOS V0.7",
+    title="NovelOS V0.8",
     description=(
         "中文长篇小说 AI 辅助创作系统：长期记忆 + Canon 一致性守卫。"
         "AI 只能提出 PROPOSED 事实，只有作者确认后才升级为 CANON。"
@@ -65,13 +76,14 @@ app.include_router(fragments.item_router)
 app.include_router(publish.novel_router)
 app.include_router(publish.chapter_router)
 app.include_router(publish.rules_router)
+app.include_router(reader.novel_router)
 app.include_router(ai.router)
 
 
 @app.get("/", include_in_schema=False)
 def index() -> dict:
     return {
-        "name": "NovelOS V0.7",
+        "name": "NovelOS V0.8",
         "version": __version__,
         "docs": "/docs",
         "health": "/api/health",

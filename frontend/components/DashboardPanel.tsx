@@ -38,6 +38,32 @@ const FRAGMENT_KIND_LABELS: Record<string, string> = {
   OTHER: "其他",
 };
 
+/** 「本书设定与大纲」的草稿：数字字段用字符串存，空串表示不改这一项。 */
+interface SettingDraft {
+  genre: string;
+  synopsis: string;
+  worldview: string;
+  outline: string;
+  chapterWordsMin: string;
+  chapterWordsMax: string;
+  dailyWordsTarget: string;
+}
+
+/** 每章字数区间的上下限与每日目标的下限都由后端限制，这里先挡一次。 */
+const WORDS_MIN_LIMIT = 200;
+const WORDS_MAX_LIMIT = 20000;
+const DAILY_MAX_LIMIT = 100000;
+
+function numberField(value: string, label: string, max: number): number | undefined {
+  const trimmed = value.trim();
+  if (trimmed === "") return undefined;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < WORDS_MIN_LIMIT || parsed > max) {
+    throw new Error(`${label}要填 ${WORDS_MIN_LIMIT}~${max} 之间的整数`);
+  }
+  return Math.floor(parsed);
+}
+
 export function DashboardPanel({
   novelId,
   provider,
@@ -56,40 +82,65 @@ export function DashboardPanel({
   const [useVector, setUseVector] = useState(true);
   const [searching, setSearching] = useState(false);
   const [retrieval, setRetrieval] = useState<RetrievalResult | null>(null);
-  const [setting, setSetting] = useState<{ genre: string; synopsis: string; worldview: string; outline: string } | null>(null);
+  const [setting, setSetting] = useState<SettingDraft | null>(null);
   const [savingSetting, setSavingSetting] = useState(false);
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState("");
   const [exporting, setExporting] = useState<"txt" | "md" | null>(null);
 
-  const currentSetting = {
+  const currentSetting: SettingDraft = {
     genre: novel?.genre ?? "",
     synopsis: novel?.synopsis ?? "",
     worldview: novel?.worldview ?? "",
     outline: novel?.outline ?? "",
+    chapterWordsMin: String(novel?.chapter_words_min ?? 2000),
+    chapterWordsMax: String(novel?.chapter_words_max ?? 3000),
+    dailyWordsTarget: String(novel?.daily_words_target ?? 4000),
   };
   const settingDraft = setting ?? currentSetting;
+  // 数字字段也按文本比对：「2000」与 2000 视为没有改动
   const settingDirty =
     setting !== null &&
-    (setting.genre !== currentSetting.genre ||
-      setting.synopsis !== currentSetting.synopsis ||
-      setting.worldview !== currentSetting.worldview ||
-      setting.outline !== currentSetting.outline);
+    (Object.keys(currentSetting) as (keyof SettingDraft)[]).some(
+      (key) => setting[key] !== currentSetting[key],
+    );
 
-  function editSetting(patch: Partial<typeof currentSetting>) {
+  function editSetting(patch: Partial<SettingDraft>) {
     setSetting({ ...settingDraft, ...patch });
   }
 
   async function saveSetting() {
     if (!setting) return;
+    let numbers: {
+      chapter_words_min?: number;
+      chapter_words_max?: number;
+      daily_words_target?: number;
+    };
+    try {
+      numbers = {
+        chapter_words_min: numberField(setting.chapterWordsMin, "每章字数下限", WORDS_MAX_LIMIT),
+        chapter_words_max: numberField(setting.chapterWordsMax, "每章字数上限", WORDS_MAX_LIMIT),
+        daily_words_target: numberField(setting.dailyWordsTarget, "每日更新目标", DAILY_MAX_LIMIT),
+      };
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+      return;
+    }
     setSavingSetting(true);
     setError("");
     try {
-      const updated = await api.updateNovel(novelId, setting);
+      const updated = await api.updateNovel(novelId, {
+        genre: setting.genre,
+        synopsis: setting.synopsis,
+        worldview: setting.worldview,
+        outline: setting.outline,
+        ...numbers,
+      });
       onNovelSaved(updated);
       setSetting(null);
       setStatus(
-        "本书设定已保存：之后的规划、写作、碎片成文都会带上它（之前写过的章节不受影响）",
+        "本书设定已保存：之后的规划、写作、碎片成文都会带上它（之前写过的章节不受影响）；" +
+          "每章字数区间与每日更新目标用于发布前检查。",
       );
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
@@ -244,6 +295,41 @@ export function DashboardPanel({
             onChange={(event) => editSetting({ outline: event.target.value })}
           />
         </label>
+        <div className="field-row" style={{ marginTop: 6 }}>
+          <label>
+            每章字数下限
+            <input
+              type="number"
+              min={WORDS_MIN_LIMIT}
+              style={{ width: 110 }}
+              value={settingDraft.chapterWordsMin}
+              onChange={(event) => editSetting({ chapterWordsMin: event.target.value })}
+            />
+          </label>
+          <label>
+            每章字数上限
+            <input
+              type="number"
+              min={WORDS_MIN_LIMIT}
+              style={{ width: 110 }}
+              value={settingDraft.chapterWordsMax}
+              onChange={(event) => editSetting({ chapterWordsMax: event.target.value })}
+            />
+          </label>
+          <label>
+            每日更新目标（字）
+            <input
+              type="number"
+              min={WORDS_MIN_LIMIT}
+              style={{ width: 110 }}
+              value={settingDraft.dailyWordsTarget}
+              onChange={(event) => editSetting({ dailyWordsTarget: event.target.value })}
+            />
+          </label>
+        </div>
+        <div className="hint">
+          每章字数区间用于发布前检查；平台福利按每日有效字数算，默认 4000。留空表示不改这一项。
+        </div>
         <div className="field-row" style={{ marginTop: 6 }}>
           <button className="primary" onClick={() => void saveSetting()} disabled={!settingDirty || savingSetting}>
             {savingSetting ? "保存中…" : "保存本书设定"}
