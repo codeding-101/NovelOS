@@ -112,7 +112,10 @@ function attachmentFilename(header: string | null): string | null {
 }
 
 export const api = {
-  health: () => request<{ status: string; search_engine: string; providers: ProviderInfo[] }>("/health"),
+  health: () =>
+    request<{ status: string; version: string; search_engine: string; providers: ProviderInfo[] }>(
+      "/health",
+    ),
   providers: () => request<ProviderInfo[]>("/ai/providers"),
   tools: () => request<{ name: string; description: string }[]>("/ai/tools"),
 

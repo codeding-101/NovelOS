@@ -6,7 +6,7 @@
 把碎片展开成正文、然后逐条告诉你哪里可能有问题。所有 AI 产出都必须带证据，
 所有设定改动都必须你点确认。
 
-当前版本 0.6.0。后端 FastAPI + SQLite，前端 Next.js 15，默认模型 DeepSeek Flash（可换任意 OpenAI 兼容端点）。
+当前版本 0.8.0。后端 FastAPI + SQLite，前端 Next.js 15，默认模型 DeepSeek Flash（可换任意 OpenAI 兼容端点）。
 
 ![工作台](docs/images/workbench.png)
 
@@ -38,6 +38,27 @@ npm run dev          # http://127.0.0.1:3000
 用 Next 的默认值（30 秒）这些功能在浏览器里会直接失败。
 
 装测试小说：界面上「创建小说」→「装载测试小说」，或 `POST /api/novels/{id}/seed`。
+
+### 部署到服务器
+
+有 Docker 的话最省事（前端、后端、数据卷都配好了）：
+
+```bash
+cp backend/.env.example .env      # 填 DEEPSEEK_API_KEY；不填就走离线提供者
+docker compose up -d --build
+# 前端 http://<服务器IP>:3000 ，接口文档 http://<服务器IP>:8000/docs
+```
+
+数据落在宿主机的 `./data`（SQLite 库 + `data/novels/<书名>/chNNN.md`），重建容器不丢。
+只想先在本机看效果，什么都不用装：`docker compose up` 就够了。
+
+不想用 Docker 就分别起：后端 `uvicorn app.main:app --host 0.0.0.0 --port 8000`，
+前端 `npm run build && npm run start`，用 `NOVELOS_BACKEND_URL` 指到后端地址。
+前端只请求相对路径 `/api/*`，所以对外只需要暴露前端那一个端口（Next 会把 `/api` 转发到后端）。
+
+想给公网一个临时网址（演示用），隧道最方便：`cloudflared tunnel --url http://localhost:3000`，
+或 `ngrok http 3000`。这条路要注意：你的小说正文会经过第三方隧道服务，
+而且**没有登录的地址等于谁都能看**，正式用还是自己机器或自己的服务器上跑。
 
 ## 它做什么
 
@@ -93,13 +114,15 @@ npm run dev          # http://127.0.0.1:3000
 
 ## 界面
 
-左边章节列表（能搜索跳转），中间正文编辑器，右边 AI 助手，底部 11 个面板：
-人物、时间线、世界观、事件、伏笔、Canon、总览、规划、碎片、质量、QA。
+左边章节列表（能搜索跳转），中间正文编辑器，右边 AI 助手，底部 13 个面板：
+人物、时间线、世界观、事件、伏笔、Canon、总览、规划、结构、读者、碎片、质量、QA。
 
-比较常用的几处：审校面板逐条列问题、证据和改法，可逐项接受/驳回；
+关注这几件事：审校面板逐条列问题、证据和改法，可逐项接受/驳回；
 Canon 面板按状态过滤、显示每条事实的生效章与失效章，还有「第 N 章时的世界状态」时点视图；
-质量面板建文风基线、评草稿、跑不变量、维护承诺、设定断言核对、文风锁定与逐章漂移、
-以及发布前检查；总览面板给每章健康矩阵、错误统计、伏笔欠账、向量索引，还有本书设定与导出。
+结构面板给全书的节奏线、连续弱区、每 5 章的节奏窗口（含张弛度判定）；
+读者面板收平台后台的数据，验证我们的判定跟读者的实际表现对不对得上；
+质量面板建文风基线、评草稿、跑不变量、维护承诺、设定断言核对、文风锁定、发布前检查；
+总览面板放本书设定与大纲、每章健康矩阵、错误统计、伏笔欠账、向量索引与导出。
 窄屏（<1100px）改成单列堆叠。
 
 设定断言核对长这样：贴一段草稿或选一章，冲突的每一条都给出原文片段和依据（Canon 事实带章号，
@@ -151,7 +174,7 @@ Canon 面板按状态过滤、显示每条事实的生效章与失效章，还�
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest                    # 230 passed（跳过的是需要真实模型的用例）
+.\.venv\Scripts\python.exe -m pytest                    # 285 passed（跳过的是需要真实模型的用例）
 $env:RUN_LIVE="1"; .\.venv\Scripts\python.exe -m pytest tests\test_live_deepseek.py   # 19 个真实模型用例
 ```
 

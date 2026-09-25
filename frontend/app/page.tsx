@@ -39,6 +39,8 @@ export default function Page() {
   const [bible, setBible] = useState<Bible | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  // 版本号从后端读，界面自己不再写死（写死过一次就漂了）
+  const [backendVersion, setBackendVersion] = useState("");
   const [provider, setProvider] = useState<string>("offline");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -103,6 +105,7 @@ export default function Page() {
       try {
         const info = await api.health();
         setProviders(info.providers);
+        setBackendVersion(info.version);
         const available = info.providers.find((item) => item.name === "deepseek" && item.available);
         setProvider(available ? "deepseek" : "offline");
       } catch {
@@ -271,7 +274,7 @@ export default function Page() {
   return (
     <div className="app">
       <div className="topbar">
-        <h1>NovelOS V0.6</h1>
+        <h1>NovelOS{backendVersion ? ` V${backendVersion}` : ""}</h1>
         <span className="hint">中文长篇小说 AI 辅助创作系统 · 长期记忆与 Canon 一致性</span>
         <span className="spacer" />
         <select value={novel?.id ?? ""} onChange={(event) => {

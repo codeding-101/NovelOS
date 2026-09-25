@@ -1,0 +1,37 @@
+# 自部署：docker compose up -d --build
+#
+# 起来之后：前端 http://localhost:3000 ，后端 http://localhost:8000/docs 。
+# 没有 DEEPSEEK_API_KEY 也能跑：会自动降级到离线规则提供者，并在界面上提示这次降级。
+#
+# 数据落在 ./data（SQLite 库 + data/novels/<书名>/chNNN.md），随容器重建不会丢。
+name: novelos
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      NOVELOS_DATA_DIR: /data
+      NOVELOS_DB_PATH: /data/novelos.db
+      NOVELOS_AI_PROVIDER: ${NOVELOS_AI_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      # 任何 OpenAI 兼容端点都可以挂进来，见 backend/.env.example
+      NOVELOS_PROVIDERS: ${NOVELOS_PROVIDERS:-[]}
+      NOVELOS_CORS_ORIGINS: ${NOVELOS_CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      NOVELOS_BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
