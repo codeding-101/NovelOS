@@ -39,6 +39,7 @@ from app.schemas import (
     TimelineEntryOut,
     WorldRuleCreate,
     WorldRuleOut,
+    WorldRuleUpdate,
 )
 from app.services import extraction_service, query_service
 from app.timeutil import story_time_sort_key
@@ -460,6 +461,20 @@ def create_world_rule(
     _novel(session, novel_id)
     rule = WorldRule(novel_id=novel_id, **payload.model_dump())
     session.add(rule)
+    session.flush()
+    return rule
+
+
+@item_router.patch("/world-rules/{rule_id}", response_model=WorldRuleOut)
+def update_world_rule(
+    rule_id: str, payload: WorldRuleUpdate, session: Session = Depends(get_session)
+) -> WorldRule:
+    """改规则（含启停）。以前只有新增与删除，界面里没法改也没法停用。"""
+    rule = session.get(WorldRule, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(rule, field, value)
     session.flush()
     return rule
 

@@ -430,6 +430,52 @@ def _platform_rule_mapping(report: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+#: 知名作品里的名字：用了容易被读者认成「蹭」或「抄」，也容易被搜到别的书。
+#: 这是一份**高置信度短名单**，不是全量库 —— 命中就提醒改名，没命中不代表一定安全。
+FAMOUS_CHARACTER_NAMES: tuple[tuple[str, str], ...] = (
+    # 古典
+    ("周通", "《水浒传》小霸王周通"),
+    ("李逵", "《水浒传》"),
+    ("武松", "《水浒传》"),
+    ("林冲", "《水浒传》"),
+    ("宋江", "《水浒传》"),
+    ("孙悟空", "《西游记》"),
+    ("哪吒", "《封神演义》"),
+    ("贾宝玉", "《红楼梦》"),
+    ("林黛玉", "《红楼梦》"),
+    ("吕布", "《三国演义》"),
+    ("赵云", "《三国演义》"),
+    # 近年网文
+    ("萧炎", "《斗破苍穹》"),
+    ("林动", "《武动乾坤》"),
+    ("牧尘", "《大主宰》"),
+    ("唐三", "《斗罗大陆》"),
+    ("霍雨浩", "《斗罗大陆 II》"),
+    ("叶凡", "《遮天》"),
+    ("石昊", "《完美世界》"),
+    ("韩立", "《凡人修仙传》"),
+    ("王林", "《仙逆》"),
+    ("苏铭", "《求魔》"),
+    ("张小凡", "《诛仙》"),
+    ("宁缺", "《将夜》"),
+    ("陈长生", "《择天记》"),
+    ("徐凤年", "《雪中悍刀行》"),
+    ("范闲", "《庆余年》"),
+    ("方源", "《蛊真人》"),
+    ("李七夜", "《万古天帝》"),
+    ("江辰", "《我只想安静地打游戏》等常见男主名"),
+)
+
+
+def find_famous_names(text: str) -> list[dict[str, str]]:
+    """扫一遍知名作品里的名字。命中是提醒，不是判决 —— 名字本来也可能撞车。"""
+    hits: list[dict[str, str]] = []
+    for name, source in FAMOUS_CHARACTER_NAMES:
+        if name and name in (text or ""):
+            hits.append({"name": name, "source": source})
+    return hits
+
+
 def check_text(
     text: str,
     *,
@@ -479,6 +525,17 @@ def check_text(
         )
 
     result.risks = find_risk_words(content)
+    for collision in find_famous_names(content):
+        result.checks.append(
+            _issue(
+                "FAMOUS_NAME",
+                "warning",
+                f"人物名撞了知名作品：「{collision['name']}」是{collision['source']}里的名字",
+                "换个原创名字，别让读者第一眼就想到别的书；名字撞车也容易被搜到别的作品",
+                word=collision["name"],
+                source=collision["source"],
+            )
+        )
     for risk in result.risks:
         result.checks.append(
             _issue(

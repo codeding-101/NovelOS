@@ -8,7 +8,15 @@ import { PlanPanel } from "@/components/PlanPanel";
 import { QualityPanel } from "@/components/QualityPanel";
 import { ReaderPanel } from "@/components/ReaderPanel";
 import { StructurePanel } from "@/components/StructurePanel";
-import type { AsOfState, AskResponse, Bible, CharacterState, Dashboard, Novel } from "@/lib/types";
+import type {
+  AsOfState,
+  AskResponse,
+  Bible,
+  CharacterState,
+  Dashboard,
+  Novel,
+  WorldRule,
+} from "@/lib/types";
 
 type TabKey =
   | "characters"
@@ -60,6 +68,16 @@ interface Props {
   setError: (message: string) => void;
 }
 
+interface RuleDraft {
+  id: string;
+  name: string;
+  rule_type: string;
+  subject: string;
+  description: string;
+}
+
+const EMPTY_RULE: RuleDraft = { id: "", name: "", rule_type: "setting", subject: "", description: "" };
+
 export function KnowledgePanel({
   novelId,
   novel,
@@ -85,6 +103,10 @@ export function KnowledgePanel({
   const [agentMode, setAgentMode] = useState(false);
   const [asOfInput, setAsOfInput] = useState("1");
   const [asOf, setAsOf] = useState<AsOfState | null>(null);
+  // 世界观规则的新增/编辑（以前这一栏只能看，不能建）
+  const [ruleDraft, setRuleDraft] = useState<RuleDraft>(EMPTY_RULE);
+  const [savingRule, setSavingRule] = useState(false);
+  const [rulesVersion, setRulesVersion] = useState(0);
   const [asOfBusy, setAsOfBusy] = useState(false);
 
   async function toggleCharacter(characterId: string) {
@@ -98,6 +120,60 @@ export function KnowledgePanel({
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
       setStates([]);
+    }
+  }
+
+  async function saveRule() {
+    if (!ruleDraft.name.trim() || !ruleDraft.description.trim()) return;
+    setSavingRule(true);
+    setError("");
+    try {
+      const body = {
+        name: ruleDraft.name.trim(),
+        rule_type: ruleDraft.rule_type,
+        subject: ruleDraft.subject.trim(),
+        description: ruleDraft.description.trim(),
+      };
+      if (ruleDraft.id) {
+        await api.updateWorldRule(ruleDraft.id, body);
+        setStatus(`规则已更新：${body.name}`);
+      } else {
+        await api.createWorldRule(novelId, { ...body, source_chapter: 1 });
+        setStatus(`规则已新增：${body.name}（写作与检查之后都会按它来）`);
+      }
+      setRuleDraft(EMPTY_RULE);
+      setRulesVersion((value) => value + 1);
+      await onRefresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingRule(false);
+    }
+  }
+
+  async function toggleRule(rule: WorldRule) {
+    setError("");
+    try {
+      await api.updateWorldRule(rule.id, { enabled: !rule.enabled });
+      setStatus(`${rule.name} 已${rule.enabled ? "停用" : "启用"}`);
+      setRulesVersion((value) => value + 1);
+      await onRefresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function removeRule(rule: WorldRule) {
+    if (!window.confirm(`删除规则「${rule.name}」？写作与检查都不再按它来。`)) return;
+    setError("");
+    try {
+      await api.deleteWorldRule(rule.id);
+      setStatus(`规则已删除：${rule.name}`);
+      if (ruleDraft.id === rule.id) setRuleDraft(EMPTY_RULE);
+      setRulesVersion((value) => value + 1);
+      await onRefresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -334,18 +410,79 @@ export function KnowledgePanel({
             <div className="issue">
               <div className="issue-title">世界观</div>
               <div className="hint" style={{ color: "inherit" }}>
-                {bible.world_rules.length} 条规则
+                {bible.world_rules.length} 条规则。规则是写作与检查都会读的结构化约束：
+                写之前它们会进提示词，写完由断言核对逐条比对。灵根这类分级设定也写在这里，
+                写死了模型就不会自己发明「上品／变异」。
               </div>
             </div>
+
+            <div className="issue" style={{ marginBottom: 10 }}>
+              <div className="issue-title">{ruleDraft.id ? "编辑规则" : "新增规则"}</div>
+              <div className="field-row">
+                <label>
+                  名称
+                  <input
+                    value={ruleDraft.name}
+                    placeholder="如：灵根只分有与无"
+                    onChange={(event) => setRuleDraft({ ...ruleDraft, name: event.target.value })}
+                  />
+                </label>
+                <label>
+                  类型
+                  <select
+                    value={ruleDraft.rule_type}
+                    onChange={(event) => setRuleDraft({ ...ruleDraft, rule_type: event.target.value })}
+                  >
+                    <option value="setting">setting（普通设定）</option>
+                    <option value="capability_gate">capability_gate（能力门槛）</option>
+                    <option value="immutable_trait">immutable_trait（不可变特质）</option>
+                    <option value="possession_unique">possession_unique（唯一持有）</option>
+                    <option value="no_resurrection">no_resurrection（死者不能复生）</option>
+                    <option value="periodic_event">periodic_event（周期性事件）</option>
+                  </select>
+                </label>
+                <label>
+                  主语
+                  <input
+                    value={ruleDraft.subject}
+                    placeholder="如：灵根"
+                    onChange={(event) => setRuleDraft({ ...ruleDraft, subject: event.target.value })}
+                  />
+                </label>
+              </div>
+              <label className="block">
+                说明（写清楚禁止什么、允许什么）
+                <textarea
+                  rows={3}
+                  value={ruleDraft.description}
+                  placeholder="如：灵根只有「有」和「没有」两种，不分上中下品，也不存在变异灵根。"
+                  onChange={(event) => setRuleDraft({ ...ruleDraft, description: event.target.value })}
+                />
+              </label>
+              <div className="field-row">
+                <button
+                  className="primary"
+                  onClick={() => void saveRule()}
+                  disabled={!ruleDraft.name.trim() || !ruleDraft.description.trim() || savingRule}
+                >
+                  {savingRule ? "保存中…" : ruleDraft.id ? "保存规则" : "新增规则"}
+                </button>
+                {ruleDraft.id && (
+                  <button onClick={() => setRuleDraft(EMPTY_RULE)}>取消编辑</button>
+                )}
+              </div>
+            </div>
+
             <table className="grid">
               <thead>
                 <tr>
                   <th>规则</th>
                   <th>类型</th>
                   <th>主语</th>
-                  <th>参数</th>
                   <th>说明</th>
                   <th>来源</th>
+                  <th>启用</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -354,9 +491,26 @@ export function KnowledgePanel({
                     <td>{rule.name}</td>
                     <td>{rule.rule_type}</td>
                     <td>{rule.subject}</td>
-                    <td>{JSON.stringify(rule.params)}</td>
                     <td>{rule.description}</td>
                     <td>{rule.source_chapter ? `第${rule.source_chapter}章` : "—"}</td>
+                    <td>{rule.enabled ? "是" : "否"}</td>
+                    <td>
+                      <button
+                        onClick={() =>
+                          setRuleDraft({
+                            id: rule.id,
+                            name: rule.name,
+                            rule_type: rule.rule_type,
+                            subject: rule.subject ?? "",
+                            description: rule.description ?? "",
+                          })
+                        }
+                      >
+                        编辑
+                      </button>{" "}
+                      <button onClick={() => void toggleRule(rule)}>{rule.enabled ? "停用" : "启用"}</button>{" "}
+                      <button onClick={() => void removeRule(rule)}>删除</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

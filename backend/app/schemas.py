@@ -419,6 +419,18 @@ class WorldRuleCreate(BaseModel):
     source_chapter: int | None = Field(default=None, ge=1)
 
 
+class WorldRuleUpdate(BaseModel):
+    """改规则：只传要改的字段。"""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    rule_type: str | None = Field(default=None, max_length=48)
+    subject: str | None = Field(default=None, max_length=64)
+    params: dict[str, Any] | None = None
+    description: str | None = None
+    enabled: bool | None = None
+    source_chapter: int | None = Field(default=None, ge=1)
+
+
 class WorldRuleOut(ORMModel):
     id: str
     novel_id: str

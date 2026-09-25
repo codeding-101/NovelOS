@@ -352,6 +352,8 @@ def list_world_rules(session: Session, novel_id: str, enabled_only: bool = True)
             "params": row.params or {},
             "description": row.description,
             "source_chapter": row.source_chapter,
+            # 界面要显示启用状态与编辑入口，漏了这个字段表格里会全是「否」
+            "enabled": bool(row.enabled),
         }
         for row in rows
     ]

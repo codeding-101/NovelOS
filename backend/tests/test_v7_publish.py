@@ -224,6 +224,20 @@ def test_craft_rules_are_exposed_with_sources(client):
 
 
 # --------------------------------------------------------------------------- 接口
+def test_famous_names_are_flagged():
+    """别用知名作品里的名字：读者第一眼就会想到别的书。"""
+    hits = publish_service.find_famous_names("他的对手叫周通，路上遇到韩立。")
+    names = {item["name"] for item in hits}
+    assert {"周通", "韩立"} <= names
+    assert all(item["source"] for item in hits), "要说清撞的是哪部作品"
+
+    clean = publish_service.find_famous_names("林远蹲在老槐树下，听老人讲林孟山的事。")
+    assert clean == [], "原创名字不该被误判"
+
+    report = publish_service.check_text("第1章 试\n\n" + "萧炎站在门口，看了很久。" * 30)
+    assert "FAMOUS_NAME" in {item["code"] for item in report.checks}
+
+
 def test_publish_check_api_on_chapter(client, novel, chapters):
     chapter = chapters[5]
     response = client.post(f"/api/chapters/{chapter.id}/publish-check")

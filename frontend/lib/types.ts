@@ -141,6 +141,19 @@ export interface WorldRule {
   params: Record<string, unknown>;
   description: string;
   source_chapter: number | null;
+  /** 停用的规则不参与写作提示与检查。 */
+  enabled?: boolean;
+}
+
+/** 新增/修改世界观规则：只传要改的字段。 */
+export interface WorldRuleBody {
+  name?: string;
+  rule_type?: string;
+  subject?: string;
+  params?: Record<string, unknown>;
+  description?: string;
+  enabled?: boolean;
+  source_chapter?: number | null;
 }
 
 export interface Evidence {

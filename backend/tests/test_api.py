@@ -183,3 +183,81 @@ def test_ai_endpoints_require_selected_chapter(client):
     missing = client.post("/api/chapters/chp_none/extract")
     assert missing.status_code == 404
     assert client.post(f"/api/novels/{novel['id']}/ai/ask", json={"question": "有人吗？"}).status_code == 200
+
+
+def test_world_rule_can_be_created_edited_and_disabled(client, novel):
+    """世界观规则要能建、能改、能停用：以前只有新增与删除，界面里没法改。"""
+    created = client.post(
+        f"/api/novels/{novel.id}/world-rules",
+        json={
+            "name": "灵根只分有与无",
+            "rule_type": "setting",
+            "subject": "灵根",
+            "description": "灵根只有「有」和「没有」，不分上中下品，也不存在变异灵根。",
+        },
+    )
+    assert created.status_code == 201, created.text
+    rule_id = created.json()["id"]
+
+    edited = client.patch(
+        f"/api/world-rules/{rule_id}", json={"description": "不分品级，也不允许天赋等级。"}
+    )
+    assert edited.status_code == 200, edited.text
+    assert "不分品级" in edited.json()["description"]
+    assert edited.json()["name"] == "灵根只分有与无", "只改一个字段，别的不能被清掉"
+
+    off = client.patch(f"/api/world-rules/{rule_id}", json={"enabled": False})
+    assert off.json()["enabled"] is False
+
+    listed = client.get(f"/api/novels/{novel.id}/world-rules").json()
+    assert any(item["id"] == rule_id and item["enabled"] is False for item in listed)
+
+    assert client.delete(f"/api/world-rules/{rule_id}").status_code == 204
+    remaining = client.get(f"/api/novels/{novel.id}/world-rules").json()
+    assert all(item["id"] != rule_id for item in remaining)
+
+    assert client.patch("/api/world-rules/wr_missing", json={"enabled": False}).status_code == 404
+
+
+def test_world_rules_reach_the_writer_prompt(session, novel):
+    """写规则不是装饰：它必须真的进写作提示词。"""
+    from app.ai.agents.chapter_writer import ChapterWriter
+    from app.ai.base import AIResponse
+    from app.models import WorldRule
+    from app.schemas import WriteChapterRequest
+
+    sentence = "灵根只有「有」和「没有」，不分上中下品。"
+    session.add(
+        WorldRule(
+            novel_id=novel.id,
+            name="灵根只分有与无",
+            rule_type="setting",
+            subject="灵根",
+            description=sentence,
+        )
+    )
+    session.commit()
+
+    class _Stub:
+        name = "stub"
+        model = "stub"
+        kind = "llm"
+        supports_tools = False
+
+        def __init__(self) -> None:
+            self.requests: list = []
+
+        def generate(self, request):  # noqa: ANN001
+            self.requests.append(request)
+            return AIResponse(
+                text="# 第1章 试\n\n他站在树下。", parsed=None, provider="stub", model="stub"
+            )
+
+    provider = _Stub()
+    ChapterWriter(provider).write(  # type: ignore[arg-type]
+        session, novel, WriteChapterRequest(goals="开篇", characters=["林远"], target_words=400)
+    )
+    session.commit()
+    prompt = provider.requests[0].prompt
+    assert sentence in prompt, "世界观规则必须进写作提示词"
+    assert "灵根只分有与无" in prompt

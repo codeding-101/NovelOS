@@ -43,6 +43,8 @@ import type {
   ObsidianSyncResult,
   PlanGenerateResponse,
   ProviderInfo,
+  WorldRule,
+  WorldRuleBody,
   PublishCheck,
   ReaderAnalysis,
   ReaderImportBody,
@@ -197,6 +199,13 @@ export const api = {
     request<CanonFact[]>(`/novels/${novelId}/canon-facts${status ? `?status=${status}` : ""}`),
   characterStates: (characterId: string) =>
     request<CharacterState[]>(`/characters/${characterId}/states`),
+  /** 世界观规则：结构化约束，写作前进提示词，写后由断言核对比对。 */
+  createWorldRule: (novelId: string, body: WorldRuleBody) =>
+    request<WorldRule>(`/novels/${novelId}/world-rules`, { method: "POST", ...json(body) }),
+  updateWorldRule: (ruleId: string, body: Partial<WorldRuleBody>) =>
+    request<WorldRule>(`/world-rules/${ruleId}`, { method: "PATCH", ...json(body) }),
+  deleteWorldRule: (ruleId: string) =>
+    request<Record<string, never>>(`/world-rules/${ruleId}`, { method: "DELETE" }),
 
   ask: (novelId: string, question: string, provider: string, mode: AskMode = "simple") =>
     request<AskResponse>(`/novels/${novelId}/ai/ask?provider=${provider}`, {
