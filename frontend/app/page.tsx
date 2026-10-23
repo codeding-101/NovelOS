@@ -212,14 +212,15 @@ export default function Page() {
             <div className={styles.eyebrow}>工作空间总览</div>
             <h1>创作环境已建立</h1>
             <p>
-              当前开放账户保护、运行状态和加密凭证管理。作品管理、任务执行与质量门禁将按开发计划逐步接入。
+              作品空间已开放草稿编辑、版本历史和原稿导入导出。任务执行与质量门禁将按开发计划逐步接入。
             </p>
+            <a href="/works">进入作品空间 →</a>
           </section>
           <div className={styles.cards}>
             <section className={styles.card}>
               <h2>服务状态</h2>
               <strong>{runtime ? "已连接" : "正在读取"}</strong>
-              <p>当前阶段：服务器与持久化基础</p>
+              <p>当前阶段：作品与版本管理</p>
               <p>
                 后台进程：
                 {runtime?.workers.filter(

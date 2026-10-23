@@ -30,9 +30,9 @@ jobs:
         working-directory: backend
         env:
           NOVELOS_TEST_POSTGRES_URL: postgresql+psycopg://novelos:disposable-ci-password@localhost:5432/novelos_test
-        run: python -m pytest tests/test_platform_foundation.py -v
+        run: python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py -v
       - name: Platform static checks
-        run: python -m ruff check backend/app/platform backend/platform_migrations backend/tests/test_platform_foundation.py scripts/baseline_snapshot.py --select F,E9
+        run: python -m ruff check backend/app/platform backend/platform_migrations backend/tests/test_platform_foundation.py backend/tests/test_platform_works.py backend/tests/platform_fixtures.py scripts/baseline_snapshot.py scripts/platform_smoke.py --select F,E9
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

@@ -67,3 +67,6 @@ def chapters(session, novel):
 def client():
     with TestClient(app) as test_client:
         yield test_client
+
+
+pytest_plugins = ["platform_fixtures"]

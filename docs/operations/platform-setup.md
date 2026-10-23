@@ -88,7 +88,7 @@ cd backend
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py -v
+.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py tests\test_platform_works.py -v
 ```
 
 默认测试 SQLite；设置 `NOVELOS_TEST_POSTGRES_URL` 后也运行 PostgreSQL 用例。该地址必须指向隔离测试数据库；每个 PostgreSQL 用例创建唯一 schema，结束时只删除自己的 schema。覆盖登录保护、持久限流、CSRF、会话过期和撤销、凭证加密、不泄露校验输入、未知迁移版本、重复初始化和只读旧库盘点。
@@ -100,7 +100,7 @@ cd backend
 .\backend\.venv\Scripts\python.exe scripts\platform_smoke.py
 ```
 
-Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PATH` 指定兼容浏览器。其他系统使用 Playwright 已安装的 Chromium。脚本验证登录、密钥清空、凭证保存、API 重启后的会话和数据、移动布局、删除与退出，并在 `data/validation` 保存报告及截图。测试用服务结束后停止，不改动用户原库。
+Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PATH` 指定兼容浏览器。其他系统使用 Playwright 已安装的 Chromium。脚本验证登录、凭证、API 重启后持久化、作品编辑、双页面冲突、历史比较与恢复、导入导出、手机布局和退出，并在 `data/validation` 保存报告及截图。测试用服务结束后停止，不改动用户原库。
 
 ## 5. 升级与恢复边界
 
@@ -110,6 +110,7 @@ M1 尚无完整生产备份调度和异机恢复工具。现阶段在正式存�
 
 ## 6. 当前限制
 
+- 新增作品空间的使用方式、导入导出限制和升级说明见 [作品与版本指南](work-assets.md)；M2 尚未全部完成。
 - 不调用真实模型，不领取 Agent 任务，不自动导入旧作品，不开放定稿。
 - 凭证支持加密保存、列出元数据和删除；供应商联通性、轮换与任务使用后续实施。
 - 当前登录限流为每个服务端观察到的客户端地址每 15 分钟最多 5 次尝试；成功尝试也计数。服务处在反向代理后，单用户共享限制符合当前使用范围。

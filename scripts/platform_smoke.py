@@ -1,4 +1,4 @@
-"""Exercise the M1 website in an isolated database and headless browser.
+"""Exercise platform access and work revision flows in an isolated browser/database.
 
 Requires backend/requirements-browser.txt and an installed Chromium browser.
 Does not load or alter the legacy database, .env files or existing servers.
@@ -173,6 +173,77 @@ def main() -> None:
                 wait_url(f"http://127.0.0.1:{api_port}/readyz", api)
                 page.reload()
                 expect(page.get_by_text("浏览器验证凭证", exact=True)).to_be_visible()
+                page.get_by_role("link", name="进入作品空间").click()
+                page.get_by_label("新作品名称").fill("浏览器作品验证")
+                page.get_by_role("button", name="创建作品", exact=True).click()
+                expect(
+                    page.get_by_text("作品已建立，可以添加章节或导入旧稿。")
+                ).to_be_visible()
+                page.get_by_label("新资产标题").fill("起风")
+                page.get_by_role("button", name="添加章节").click()
+                page.get_by_label("正文", exact=True).fill("山风拂过旧屋。\n他推开门。")
+                page.get_by_role("button", name="保存新版本").click()
+                expect(
+                    page.get_by_text("已保存版本 2，之前的正文仍保留在历史中。")
+                ).to_be_visible()
+                # Two browser tabs share a session but retain independent version expectations.
+                stale = context.new_page()
+                stale.goto(origin + "/works")
+                stale.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                stale.get_by_role("button", name="章节 起风").click()
+                expect(stale.get_by_label("正文", exact=True)).to_have_value(
+                    "山风拂过旧屋。\n他推开门。"
+                )
+                page.get_by_label("正文", exact=True).fill(
+                    "雨水敲打旧屋。\n他没有推门。"
+                )
+                page.get_by_role("button", name="保存新版本").click()
+                expect(
+                    page.get_by_text("已保存版本 3，之前的正文仍保留在历史中。")
+                ).to_be_visible()
+                stale.get_by_label("正文", exact=True).fill("不能覆盖的另一份输入")
+                stale.get_by_role("button", name="保存新版本").click()
+                expect(stale.get_by_role("main").get_by_role("alert")).to_contain_text(
+                    "正文已有新版本"
+                )
+                expect(stale.get_by_label("正文", exact=True)).to_have_value(
+                    "不能覆盖的另一份输入"
+                )
+                stale.close()
+                page.get_by_role("button", name="版本 2", exact=False).click()
+                expect(page.get_by_label("版本差异")).to_contain_text("-山风拂过旧屋。")
+                page.get_by_role("button", name="将此版本恢复为新版本").click()
+                expect(
+                    page.get_by_text("已恢复为新版本 4，所有历史版本均保留。")
+                ).to_be_visible()
+                expect(page.get_by_label("正文", exact=True)).to_have_value(
+                    "山风拂过旧屋。\n他推开门。"
+                )
+                with page.expect_download() as download_info:
+                    page.get_by_role("button", name="导出草稿与历史").click()
+                download = download_info.value
+                assert download.suggested_filename.startswith("novelos-draft-")
+                assert download.failure() is None
+                page.get_by_label("导入原稿").set_input_files(
+                    {
+                        "name": "旧稿.md",
+                        "mimeType": "text/markdown",
+                        "buffer": b"\xef\xbb\xbf" + "保留原稿\r\n".encode("utf-8"),
+                    }
+                )
+                expect(
+                    page.get_by_text("原稿已导入为草稿。原文件字节和校验值已单独保留。")
+                ).to_be_visible()
+                page.get_by_role("button", name="章节 起风").click()
+                page.get_by_role("button", name="版本 2", exact=False).click()
+                page.screenshot(path=str(output / "works-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "works-mobile.png"), full_page=True)
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
+                page.get_by_role("link", name="返回控制台").click()
+                page.set_viewport_size({"width": 1440, "height": 1100})
                 page.screenshot(
                     path=str(output / "platform-desktop.png"), full_page=True
                 )
@@ -200,6 +271,12 @@ def main() -> None:
                             "http_only_session",
                             "encrypted_credential_form",
                             "api_restart_persists_session_and_credential",
+                            "work_create_edit_save",
+                            "two_tabs_conflict_preserves_input",
+                            "history_compare_restore_creates_revision",
+                            "draft_export_download",
+                            "original_markdown_import",
+                            "works_mobile_no_horizontal_overflow",
                             "mobile_no_horizontal_overflow",
                             "delete",
                             "logout",
@@ -211,7 +288,7 @@ def main() -> None:
                 encoding="utf-8",
             )
             print(
-                "PASS: browser login, credential management, restart persistence, mobile layout and logout"
+                "PASS: login, credentials, restart, work editing, conflict, restore, import/export, mobile and logout"
             )
         finally:
             for process in reversed(processes):

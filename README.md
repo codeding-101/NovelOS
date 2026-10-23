@@ -2,7 +2,7 @@
 
 面向个人长篇小说创作的运行环境与控制平台，以部署到服务器的网站为主要形态。模型 API、外部 Agent 和用户负责执行创作任务；NovelOS 管理作品资产、正式记忆、权限、预算、质量检查和执行恢复。
 
-项目正在按新需求分阶段重组。当前已交付 M0 基线保护与 M1 控制平台基础：登录、持久会话、加密凭证、显式数据库迁移、独立 Worker 心跳和运行状态页面。作品迁移、任务执行、AI 创作及真实朱雀检测仍按后续阶段建设。M1 控制台不会调用外部模型或授予正文定稿状态。
+项目正在按新需求分阶段重组。已建立登录、持久会话、加密凭证、显式数据库迁移和独立 Worker 心跳；M2 首个工作包提供作品目录、草稿编辑、不可变版本、比较与恢复、TXT／Markdown 导入及带校验清单的草稿导出。旧库实际迁移、附件存储、任务执行、AI 创作和真实朱雀检测仍在后续工作中。当前不调用外部模型、不授予正文定稿状态；容器部署验收尚未完成。
 
 ## 文档
 
@@ -10,6 +10,8 @@
 - [当前执行记录和验收结果](docs/planning/execution-status.md)
 - [部署与本地开发指南](docs/operations/platform-setup.md)
 - [M1 架构决策](docs/decisions/0001-platform-foundation.md)
+- [作品编辑、导入与历史恢复](docs/operations/work-assets.md)
+- [M2 草稿版本决策](docs/decisions/0002-immutable-drafts.md)
 - [旧版使用说明归档](docs/legacy/README.md)
 
 ## 服务器部署
@@ -39,7 +41,7 @@ cd backend
 python -m pip install -r requirements-dev.txt
 python -m pytest
 # 配置隔离的 NOVELOS_TEST_POSTGRES_URL 后，同一组用例也会验证真实 PostgreSQL。
-python -m pytest tests/test_platform_foundation.py -v
+python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py -v
 ```
 
 前端构建：在 `frontend` 执行 `npm ci` 和 `npm run build`。浏览器验收与容器冒烟见部署指南和 GitHub Actions 配置。真实模型测试默认跳过；模拟结果不能替代朱雀检测证据。

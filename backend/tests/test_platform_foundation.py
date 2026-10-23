@@ -1,7 +1,6 @@
 from dataclasses import replace
 from datetime import timedelta
 import json
-import os
 import sqlite3
 
 from cryptography.fernet import Fernet
@@ -23,62 +22,7 @@ from app.platform.models import (
 from app.platform.security import CredentialVault, create_owner
 from app.platform.worker import heartbeat
 
-PASSWORD = "test-only-long-password"
-
-
-@pytest.fixture(params=["sqlite", "postgresql"])
-def platform(request, tmp_path):
-    if request.param == "postgresql":
-        url = os.getenv("NOVELOS_TEST_POSTGRES_URL")
-        if not url:
-            pytest.skip(
-                "Set NOVELOS_TEST_POSTGRES_URL to an isolated disposable PostgreSQL database"
-            )
-    else:
-        url = f"sqlite+pysqlite:///{(tmp_path / 'platform.db').as_posix()}"
-    settings = PlatformSettings(
-        environment="test",
-        database_url=url,
-        master_key=Fernet.generate_key().decode(),
-        public_origin="http://testserver",
-    )
-    db = PlatformDatabase(settings)
-    # The PostgreSQL fixture creates a fresh schema per test, never drops shared tables.
-    schema = None
-    if request.param == "postgresql":
-        from uuid import uuid4
-
-        schema = "novelos_test_" + uuid4().hex
-        with db.engine.begin() as connection:
-            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
-        db.engine.dispose()
-        from sqlalchemy import event
-
-        @event.listens_for(db.engine, "connect")
-        def set_schema(connection, _record):
-            connection.autocommit = True
-            connection.execute(f'SET search_path TO "{schema}"')
-            connection.autocommit = False
-
-    db.upgrade()
-    with db.sessions.begin() as session:
-        create_owner(session, "owner", PASSWORD)
-    yield settings, db
-    if schema:
-        with db.engine.begin() as connection:
-            connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
-    db.engine.dispose()
-
-
-def signed_in(client, settings):
-    response = client.post(
-        "/api/v1/auth/login", json={"username": "owner", "password": PASSWORD}
-    )
-    assert response.status_code == 200
-    return {
-        "X-CSRF-Token": client.cookies[settings.csrf_cookie],
-        "Origin": settings.public_origin,
-    }
+from platform_fixtures import PASSWORD, signed_in
 
 
 def test_private_routes_and_legacy_bypass_are_protected(platform):
