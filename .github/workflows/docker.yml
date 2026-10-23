@@ -21,6 +21,19 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: 准备一次性测试配置
+        run: |
+          python - <<'PY'
+          import base64, os, pathlib
+          key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+          pathlib.Path('.env').write_text(
+              'NOVELOS_ENV=development\n'
+              'NOVELOS_PUBLIC_ORIGIN=http://localhost:3000\n'
+              'POSTGRES_PASSWORD=disposable-ci-password\n'
+              f'NOVELOS_MASTER_KEY={key}\n'
+          )
+          PY
+
       - name: 校验 compose 文件
         run: docker compose config --quiet
 
@@ -35,27 +48,25 @@ jobs:
 
       - name: 起服务并等健康检查通过
         run: |
-          # 明确走离线提供者：CI 上没有密钥，也不该在流水线里调用外部模型
-          printf 'NOVELOS_AI_PROVIDER=offline\n' > .env
           docker compose up -d --wait --wait-timeout 240
           docker compose ps
 
-      - name: 冒烟测试（后端 + 前端 + 前端转发）
+      - name: 冒烟测试（初始化、登录、权限与前端转发）
+        env:
+          NOVELOS_BOOTSTRAP_PASSWORD: disposable-ci-owner-password
         run: |
           set -euo pipefail
-          echo "—— 后端直连 ——"
-          curl -fsS http://localhost:8000/api/health | tee /tmp/health.json
-          grep -q '"status":"ok"' /tmp/health.json
-          echo "—— 前端首页 ——"
+          docker compose exec -T -e NOVELOS_BOOTSTRAP_PASSWORD backend python -m app.platform.cli init-owner
           curl -fsS http://localhost:3000/ | grep -q NovelOS
-          echo "—— 经前端转发到后端（验证构建期写死的 backend:8000）——"
-          curl -fsS http://localhost:3000/api/health | grep -q '"status":"ok"'
-          echo "—— 写路径：建一本书 ——"
-          curl -fsS -X POST http://localhost:8000/api/novels \
-            -H 'Content-Type: application/json' \
-            -d '{"title":"CI 冒烟"}' | grep -q '"id"'
-          echo "—— 数据落到宿主机卷 ——"
-          test -f data/novelos.db && ls -la data | head -5
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/v1/runtime)" = 401
+          curl -fsS http://localhost:3000/api/v1/auth/status | grep -q '"initialized":true'
+          curl -fsS -c /tmp/novelos-cookies -X POST http://localhost:3000/api/v1/auth/login \
+            -H 'Content-Type: application/json' -H 'Origin: http://localhost:3000' \
+            -d '{"username":"owner","password":"disposable-ci-owner-password"}' | grep -q '"authenticated":true'
+          curl -fsS -b /tmp/novelos-cookies http://localhost:3000/api/v1/runtime | grep -q '"database":"postgresql"'
+          docker compose restart backend worker
+          sleep 5
+          curl --retry 10 --retry-connrefused --retry-delay 2 -fsS -b /tmp/novelos-cookies http://localhost:3000/api/v1/runtime | grep -q '"database":"postgresql"'
 
       - name: 失败时打印容器日志
         if: failure()

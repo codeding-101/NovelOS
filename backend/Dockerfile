@@ -1,4 +1,4 @@
-# 后端镜像：FastAPI + SQLite。数据目录挂卷，别把库和正文塞进镜像层。
+# NovelOS control platform. Legacy modules remain available for explicit migration.
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -13,14 +13,17 @@ RUN pip install --no-cache-dir -r requirements.txt -r requirements-vector.txt
 
 COPY app ./app
 COPY seed ./seed
+COPY platform_migrations ./platform_migrations
 
 # /data 放 SQLite 库与正文镜像，由 compose 挂出来
-RUN mkdir -p /data
+RUN groupadd --gid 10001 novelos && useradd --uid 10001 --gid novelos --no-create-home novelos \
+    && mkdir -p /data && chown novelos:novelos /data
 VOLUME ["/data"]
+USER novelos
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=4).status == 200 else 1)"
 
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app.platform.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

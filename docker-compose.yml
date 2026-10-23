@@ -1,31 +1,63 @@
-# 自部署：docker compose up -d --build
-#
-# 起来之后：前端 http://localhost:3000 ，后端 http://localhost:8000/docs 。
-# 没有 DEEPSEEK_API_KEY 也能跑：会自动降级到离线规则提供者，并在界面上提示这次降级。
-#
-# 数据落在 ./data（SQLite 库 + data/novels/<书名>/chNNN.md），随容器重建不会丢。
 name: novelos
 
+x-platform-env: &platform-env
+  NOVELOS_ENV: ${NOVELOS_ENV:-production}
+  NOVELOS_DB_HOST: postgres
+  NOVELOS_DB_NAME: novelos
+  NOVELOS_DB_USER: novelos
+  NOVELOS_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+  NOVELOS_MASTER_KEY: ${NOVELOS_MASTER_KEY:?Set NOVELOS_MASTER_KEY in .env}
+  NOVELOS_PUBLIC_ORIGIN: ${NOVELOS_PUBLIC_ORIGIN:?Set NOVELOS_PUBLIC_ORIGIN in .env}
+
 services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: novelos
+      POSTGRES_USER: novelos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - platform-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novelos -d novelos"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build: ./backend
+    image: novelos-backend
+    environment: *platform-env
+    command: ["python", "-m", "app.platform.cli", "upgrade"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: "no"
+
   backend:
     build: ./backend
-    # 显式声明镜像名：CI 里先用 bake 构建（吃 GHA 层缓存），compose 起来时直接复用，
-    # 不会因为标签对不上而去 registry 拉一个不存在的镜像
+    image: novelos-backend
+    environment: *platform-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
     image: novelos-backend
     environment:
-      NOVELOS_DATA_DIR: /data
-      NOVELOS_DB_PATH: /data/novelos.db
-      NOVELOS_AI_PROVIDER: ${NOVELOS_AI_PROVIDER:-deepseek}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
-      # 任何 OpenAI 兼容端点都可以挂进来，见 backend/.env.example
-      NOVELOS_PROVIDERS: ${NOVELOS_PROVIDERS:-[]}
-      NOVELOS_CORS_ORIGINS: ${NOVELOS_CORS_ORIGINS:-http://localhost:3000}
-    volumes:
-      - ./data:/data
-    ports:
-      - "8000:8000"
+      <<: *platform-env
+      NOVELOS_WORKER_ID: primary
+    command: ["python", "-m", "app.platform.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
   frontend:
@@ -34,8 +66,29 @@ services:
     environment:
       NOVELOS_BACKEND_URL: http://backend:8000
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+  gateway:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    environment:
+      NOVELOS_DOMAIN: ${NOVELOS_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  platform-postgres:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,44 @@
+name: platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: novelos
+          POSTGRES_PASSWORD: disposable-ci-password
+          POSTGRES_DB: novelos_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U novelos -d novelos_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Platform security and migrations on SQLite and PostgreSQL
+        working-directory: backend
+        env:
+          NOVELOS_TEST_POSTGRES_URL: postgresql+psycopg://novelos:disposable-ci-password@localhost:5432/novelos_test
+        run: python -m pytest tests/test_platform_foundation.py -v
+      - name: Platform static checks
+        run: python -m ruff check backend/app/platform backend/platform_migrations backend/tests/test_platform_foundation.py scripts/baseline_snapshot.py --select F,E9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend

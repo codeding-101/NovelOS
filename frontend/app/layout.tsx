@@ -2,8 +2,8 @@
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NovelOS · 长篇小说 AI 辅助创作",
-  description: "中文长篇小说 AI 辅助创作系统：长期记忆与 Canon 一致性守卫",
+  title: "NovelOS · 长篇创作控制平台",
+  description: "面向个人的长篇小说创作运行环境：任务、正式记忆、版本与质量控制",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

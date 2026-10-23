@@ -1,0 +1,4 @@
+{$NOVELOS_DOMAIN} {
+    encode gzip
+    reverse_proxy frontend:3000
+}
