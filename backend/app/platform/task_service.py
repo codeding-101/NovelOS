@@ -22,6 +22,7 @@ from app.platform.models import (
     TaskCheckpoint,
     TaskDependency,
     TaskSubmission,
+    TaskRoutingDecision,
     identifier,
     now,
 )
@@ -29,6 +30,7 @@ from app.platform.security import hashed, utc
 from app.platform.task_protocol import CheckpointInput, ResultEnvelope, TaskInput
 from app.platform.works import require_asset, require_work
 from app.platform import budget_service
+from app.platform import executor_service
 
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
 LEASE_SECONDS = 60
@@ -108,7 +110,7 @@ def create_task(db, body: TaskInput):
                 return previous.id
             require_work(session, body.work_id)
             executor = session.get(Executor, body.executor_id)
-            if (
+            if body.executor_id != "auto" and (
                 executor is None
                 or executor.mode not in {"human", "local_test"}
                 or body.task_type not in executor.capabilities
@@ -116,6 +118,9 @@ def create_task(db, body: TaskInput):
                 raise HTTPException(
                     422, "所选执行者不支持该任务；真实 API 与 Agent 尚未开放"
                 )
+            selected, routing = executor_service.select_for_task(
+                session, body.work_id, body.task_type, body.executor_id
+            )
             revision = session.get(AssetRevision, body.input_revision_id)
             if revision is None:
                 raise HTTPException(404, "输入版本不存在")
@@ -130,7 +135,7 @@ def create_task(db, body: TaskInput):
                     raise HTTPException(422, "依赖任务必须已经存在且属于同一作品")
             task = CreativeTask(
                 work_id=body.work_id,
-                executor_id=body.executor_id,
+                executor_id=selected,
                 input_revision_id=body.input_revision_id,
                 task_type=body.task_type,
                 objective=body.objective,
@@ -142,6 +147,15 @@ def create_task(db, body: TaskInput):
             )
             session.add(task)
             session.flush()
+            session.add(
+                TaskRoutingDecision(
+                    task_id=task.id,
+                    requested_executor_id=body.executor_id,
+                    selected_executor_id=selected,
+                    policy_version=routing["policy_version"],
+                    snapshot=routing,
+                )
+            )
             for dep_id in body.dependencies:
                 session.add(TaskDependency(task_id=task.id, depends_on_id=dep_id))
             # Only new nodes may refer to existing nodes; dependencies are immutable, so no cycle can be introduced.
@@ -232,6 +246,10 @@ def try_claim(db, task_id, executor_id):
             return None
         if utc(task.deadline_at) <= now() or task.attempt_count >= task.max_attempts:
             transition(task, "FAILED", "LIMIT_EXCEEDED")
+            event(session, task, "blocked", reason=task.reason)
+            return None
+        if not executor_service.ready_for_claim(session, task):
+            transition(task, "PAUSED", "EXECUTOR_BLOCKED")
             event(session, task, "blocked", reason=task.reason)
             return None
         if budget_service.unknown_count(session, task.work_id, task.id):
@@ -472,6 +490,8 @@ def control(db, task_id, action, expected_version):
         if task.state in TERMINAL:
             raise HTTPException(409, "任务已经结束")
         if action == "resume":
+            if not executor_service.ready_for_claim(session, task):
+                raise HTTPException(409, "执行者或路由规则仍阻止执行，请先核对设置")
             if budget_service.unknown_count(session, task.work_id, task.id):
                 raise HTTPException(409, "此任务仍有未知费用，请先核对账目再恢复")
             if (

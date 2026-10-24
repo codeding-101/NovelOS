@@ -34,7 +34,7 @@ class Contract(BaseModel):
 class TaskInput(Contract):
     protocol_version: Literal["1.0"] = "1.0"
     work_id: str = Field(min_length=1, max_length=32)
-    executor_id: Literal["human", "local_test"]
+    executor_id: Literal["human", "local_test", "auto"]
     input_revision_id: str = Field(min_length=1, max_length=32)
     task_type: TaskType
     objective: str = Field(min_length=1, max_length=4000)

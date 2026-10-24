@@ -81,9 +81,9 @@ def seed_unknown_budget(db, work_id: str) -> str:
             request_key="budget-smoke",
         ),
     )
+    envelope = task_service.try_claim(db, task_id, "human")
     with db.sessions.begin() as session:
         session.get(CreativeTask, task_id).executor_id = "smoke_accounting"
-    envelope = task_service.try_claim(db, task_id, "smoke_accounting")
     with db.sessions.begin() as session:
         task = task_service.locked_task(session, task_id)
         reservation = budget_service.reserve(
@@ -514,6 +514,66 @@ def main() -> None:
                 page.screenshot(
                     path=str(output / "platform-desktop.png"), full_page=True
                 )
+                page.get_by_role("link", name="执行者与路由设置", exact=False).click()
+                page.get_by_label("执行者名称", exact=True).fill("登记接口验收")
+                page.get_by_label("上下文 token 上限", exact=True).fill("8000")
+                page.get_by_label("输入价格（每百万 token）", exact=True).fill("0.25")
+                page.get_by_label("输出价格（每百万 token）", exact=True).fill("0.5")
+                page.get_by_label("凭证引用", exact=True).select_option(
+                    label="浏览器验证凭证"
+                )
+                page.get_by_role("button", name="保存执行者", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("执行者配置已保存")
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("允许 登记接口验收", exact=True).check()
+                page.get_by_label("首选 人工执行", exact=True).uncheck()
+                page.get_by_label("首选 本地流程校验", exact=True).check()
+                page.get_by_label("允许自动选择本地流程校验", exact=False).check()
+                page.get_by_role("button", name="保存路由规则", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("作品路由规则已保存")
+                page.get_by_role("button", name="检查路由", exact=True).click()
+                expect(page.get_by_role("region", name="路由检查")).to_contain_text(
+                    "当前可选：本地流程校验"
+                )
+                expect(page.get_by_role("region", name="路由检查")).to_contain_text(
+                    "外部适配器尚未开放"
+                )
+                page.reload()
+                page.get_by_role("button", name="编辑 登记接口验收", exact=True).click()
+                expect(
+                    page.get_by_label("输入价格（每百万 token）", exact=True)
+                ).to_have_value("0.25")
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                expect(
+                    page.get_by_label("允许自动选择本地流程校验", exact=False)
+                ).to_be_checked()
+                page.get_by_role("button", name="检查路由", exact=True).click()
+                expect(page.get_by_role("region", name="路由检查")).to_contain_text(
+                    "当前可选：本地流程校验"
+                )
+                page.screenshot(
+                    path=str(output / "executors-desktop.png"), full_page=True
+                )
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(
+                    path=str(output / "executors-mobile.png"), full_page=True
+                )
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
+                page.get_by_role("link", name="进入任务中心", exact=True).click()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("输入版本").select_option(label="起风 · v4")
+                page.get_by_label("执行者", exact=True).select_option("auto")
+                page.get_by_label("任务目标").fill("自动路由验收")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "自动选择，规则版本 1"
+                )
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "候选已接收", timeout=20000
+                )
+                page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
                     path=str(output / "platform-mobile.png"), full_page=True
@@ -555,6 +615,10 @@ def main() -> None:
                             "candidate_does_not_change_asset",
                             "local_worker_task_completion",
                             "task_cancellation",
+                            "executor_registration_persists",
+                            "routing_preflight_blocks_external_adapter",
+                            "auto_task_uses_saved_policy",
+                            "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",
                             "mobile_no_horizontal_overflow",

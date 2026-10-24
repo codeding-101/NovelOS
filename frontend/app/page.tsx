@@ -221,6 +221,9 @@ export default function Page() {
             <p>
               <a href="/budgets">进入预算中心 →</a>
             </p>
+            <p>
+              <a href="/executors">执行者与路由设置 →</a>
+            </p>
           </section>
           <div className={styles.cards}>
             <section className={styles.card}>

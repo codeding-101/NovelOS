@@ -8,10 +8,10 @@ from app.platform.models import (
     Asset,
     AssetRevision,
     CreativeTask,
-    Executor,
     TaskAttempt,
     TaskDependency,
     TaskSubmission,
+    TaskRoutingDecision,
 )
 from app.platform.task_protocol import (
     CheckpointInput,
@@ -52,22 +52,6 @@ def task_data(task):
     }
 
 
-@router.get("/executors")
-def executors(request: Request):
-    with request.app.state.database.sessions() as session:
-        return [
-            {
-                "id": item.id,
-                "name": item.name,
-                "mode": item.mode,
-                "capabilities": item.capabilities,
-                "external_calls": False,
-                "paid_calls": False,
-            }
-            for item in session.scalars(select(Executor).order_by(Executor.id))
-        ]
-
-
 @router.post("/tasks", status_code=201)
 def create(body: TaskInput, request: Request):
     return {"id": service.create_task(request.app.state.database, body)}
@@ -101,8 +85,16 @@ def detail(task_id: str, request: Request):
         if task is None:
             raise HTTPException(404, "任务不存在")
         revision = session.get(AssetRevision, task.input_revision_id)
+        routing = session.get(TaskRoutingDecision, task_id)
         return {
             **task_data(task),
+            "routing": {
+                "requested_executor_id": routing.requested_executor_id,
+                "selected_executor_id": routing.selected_executor_id,
+                "snapshot": routing.snapshot,
+            }
+            if routing
+            else None,
             "input": {
                 "revision_id": revision.id,
                 "title": revision.title,

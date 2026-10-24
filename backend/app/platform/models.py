@@ -247,6 +247,37 @@ class Executor(PlatformBase):
     name: Mapped[str] = mapped_column(String(128))
     mode: Mapped[str] = mapped_column(String(32))
     capabilities: Mapped[list] = mapped_column(JSON)
+    enabled: Mapped[bool] = mapped_column(default=True, server_default="1")
+    available: Mapped[bool] = mapped_column(default=True, server_default="1")
+    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    currency: Mapped[str | None] = mapped_column(String(3))
+    input_rate: Mapped[int | None] = mapped_column(BigInteger)
+    output_rate: Mapped[int | None] = mapped_column(BigInteger)
+    context_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    credential_id: Mapped[str | None] = mapped_column(String(32))
+    registration_key: Mapped[str | None] = mapped_column(String(128), unique=True)
+    registration_hash: Mapped[str | None] = mapped_column(String(64))
+
+
+class ExecutionPolicy(PlatformBase):
+    __tablename__ = "execution_policies"
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    allowed_ids: Mapped[list] = mapped_column(JSON)
+    preferred_ids: Mapped[list] = mapped_column(JSON)
+    auto_local_diagnostics: Mapped[bool] = mapped_column(default=False)
+
+
+class TaskRoutingDecision(PlatformBase):
+    __tablename__ = "task_routing_decisions"
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("creative_tasks.id"), primary_key=True
+    )
+    requested_executor_id: Mapped[str] = mapped_column(String(32))
+    selected_executor_id: Mapped[str] = mapped_column(ForeignKey("executors.id"))
+    policy_version: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(JSON)
 
 
 class CreativeTask(PlatformBase):

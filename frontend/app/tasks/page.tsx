@@ -12,7 +12,14 @@ type Asset = {
   revision_id: string;
   head_version: number;
 };
-type Executor = { id: string; name: string; capabilities: string[] };
+type Executor = {
+  id: string;
+  name: string;
+  capabilities: string[];
+  adapter_ready: boolean;
+  enabled: boolean;
+  available: boolean;
+};
 type Task = {
   id: string;
   objective: string;
@@ -33,6 +40,11 @@ type Checkpoint = {
   payload: { note?: string };
 };
 type Detail = Task & {
+  routing: {
+    requested_executor_id: string;
+    selected_executor_id: string;
+    snapshot: { policy_version: number };
+  } | null;
   input: {
     revision_id: string;
     title: string;
@@ -99,6 +111,7 @@ const reasons: Record<string, string> = {
   ATTEMPT_INACTIVE: "来自已结束或过期的执行",
   OUTPUT_SCOPE_INVALID: "结果超出授权输入范围",
   BUDGET_UNCERTAIN: "调用费用尚不明确，请在预算中心核对后恢复",
+  EXECUTOR_BLOCKED: "执行者或作品规则已变化，请在执行者设置中核对后恢复",
 };
 
 async function allPages<T>(path: string) {
@@ -150,6 +163,9 @@ export default function TasksPage() {
       .then(([list, providers]) => {
         setWorks(list);
         setExecutors(providers);
+        setType(
+          providers.find((e) => e.id === "human")?.capabilities[0] || "analyze",
+        );
       })
       .catch((err) => setError(err.message))
       .finally(() => setReady(true));
@@ -536,14 +552,23 @@ export default function TasksPage() {
                   value={executorId}
                   onChange={(e) => {
                     setExecutorId(e.target.value);
-                    setType("analyze");
+                    setType(
+                      e.target.value === "auto"
+                        ? "analyze"
+                        : executors.find((item) => item.id === e.target.value)
+                            ?.capabilities[0] || "analyze",
+                    );
                   }}
                 >
-                  {executors.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
+                  <option value="auto">按作品规则自动选择</option>
+                  {executors
+                    .filter((e) => e.adapter_ready)
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                        {!e.enabled || !e.available ? "（当前不可用）" : ""}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label>
@@ -554,8 +579,10 @@ export default function TasksPage() {
                   onChange={(e) => setType(e.target.value)}
                 >
                   {(
-                    executors.find((e) => e.id === executorId)?.capabilities ||
-                    []
+                    (executorId === "auto"
+                      ? Object.keys(types)
+                      : executors.find((e) => e.id === executorId)
+                          ?.capabilities) || []
                   ).map((value) => (
                     <option key={value} value={value}>
                       {types[value]}
@@ -648,7 +675,8 @@ export default function TasksPage() {
                       <strong>{task.objective}</strong>
                       <small>
                         {states[task.state]} ·{" "}
-                        {task.executor_id === "human" ? "人工" : "本地校验"}
+                        {executors.find((e) => e.id === task.executor_id)
+                          ?.name || task.executor_id}
                       </small>
                     </button>
                   </li>
@@ -661,6 +689,13 @@ export default function TasksPage() {
               ) : (
                 <>
                   <h2>{detail.objective}</h2>
+                  <p>
+                    执行者：
+                    {executors.find((e) => e.id === detail.executor_id)?.name ||
+                      detail.executor_id}
+                    {detail.routing?.requested_executor_id === "auto" &&
+                      `（自动选择，规则版本 ${detail.routing.snapshot.policy_version}）`}
+                  </p>
                   <p>
                     状态：<strong>{states[detail.state]}</strong> · 尝试{" "}
                     {detail.attempt_count} / {detail.max_attempts}

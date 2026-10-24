@@ -2,7 +2,7 @@
 
 面向个人长篇小说创作的运行环境与控制平台，以部署到服务器的网站为主要形态。模型 API、外部 Agent 和用户负责执行创作任务；NovelOS 管理作品资产、正式记忆、权限、预算、质量检查和执行恢复。
 
-项目正在按新需求分阶段重组。已建立登录、持久会话、加密凭证和显式迁移；作品空间支持草稿编辑、不可变版本、比较恢复、原稿导入、附件、版本引用、文字检索与带校验清单的导出。后台可重试文件同步和索引重建，旧 SQLite 可通过管理命令只读导入独立新库。任务中心已支持人工处理与本地流程校验，包括排队、依赖、检查点、有限重试、暂停恢复和候选结果隔离。预算中心可设置作品累计费用与 token 上限，账本提供预留、结算去重和未知费用保留基础。真实 API／Agent、执行者路由及朱雀检测尚待后续工作包；当前不调用外部模型、不授予正文定稿状态，容器部署验收也尚未完成。
+项目正在按新需求分阶段重组。已建立登录、持久会话、加密凭证和显式迁移；作品空间支持草稿编辑、不可变版本、比较恢复、原稿导入、附件、版本引用、文字检索与带校验清单的导出。后台可重试文件同步和索引重建，旧 SQLite 可通过管理命令只读导入独立新库。任务中心支持人工与本地校验、依赖、检查点、有限重试和候选隔离；预算中心提供累计费用／token 上限、预留、结算去重与未知费用对账。执行者设置支持能力声明、作品选择规则、预算检查及本地自动路由。真实 API／Agent 执行及朱雀检测尚待后续工作包；当前不调用外部模型、不授予正文定稿状态，容器部署验收也尚未完成。
 
 ## 文档
 
@@ -17,6 +17,8 @@
 - [持久任务与候选结果决策](docs/decisions/0004-task-runtime.md)
 - [作品预算与未知费用对账](docs/operations/work-budgets.md)
 - [预算与调用账本决策](docs/decisions/0005-work-budgets.md)
+- [执行者登记与作品路由](docs/operations/executor-routing.md)
+- [执行者路由决策](docs/decisions/0006-executor-routing.md)
 - [旧版使用说明归档](docs/legacy/README.md)
 
 ## 服务器部署
@@ -46,7 +48,7 @@ cd backend
 python -m pip install -r requirements-dev.txt
 python -m pytest
 # 配置隔离的 NOVELOS_TEST_POSTGRES_URL 后，同一组用例也会验证真实 PostgreSQL。
-python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py -v
+python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py -v
 ```
 
 前端构建：在 `frontend` 执行 `npm ci` 和 `npm run build`。浏览器验收与容器冒烟见部署指南和 GitHub Actions 配置。真实模型测试默认跳过；模拟结果不能替代朱雀检测证据。

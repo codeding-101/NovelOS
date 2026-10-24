@@ -46,7 +46,7 @@ def test_upgrade_keeps_m1_accounts_and_encrypted_credentials(platform_database):
         session.flush()
         credential_id = credential.id
     db.upgrade()
-    assert db.require_current() == "0005_work_budgets"
+    assert db.require_current() == "0006_executor_routing"
     with db.sessions() as session:
         assert session.get(Owner, "owner").username == "original-owner"
         assert (

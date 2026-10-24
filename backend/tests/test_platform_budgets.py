@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from datetime import timedelta
 from alembic import command
 
 from fastapi import HTTPException
@@ -12,6 +13,7 @@ from sqlalchemy import func, select, update, delete
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.platform import budget_service as budget, task_service as tasks
+from app.platform import executor_service
 from app.platform.api import create_app
 from app.platform.database import migration_config
 from app.platform.budget_protocol import BudgetInput, ReservationInput, SettlementInput
@@ -21,9 +23,23 @@ from app.platform.models import (
     CreativeTask,
     Executor,
     WorkBudget,
+    now,
 )
 from platform_fixtures import signed_in
 from test_platform_tasks import task_input, expire
+
+
+@pytest.fixture(autouse=True)
+def offline_accounting_adapter(monkeypatch):
+    # Budget tests model a future adapter in process; production routing must keep it closed.
+    original = executor_service.ready_for_claim
+    monkeypatch.setattr(
+        executor_service,
+        "ready_for_claim",
+        lambda session, task: (
+            True if task.executor_id == "test_api" else original(session, task)
+        ),
+    )
 
 
 def test_budget_upgrade_preserves_existing_task(platform_database):
@@ -33,9 +49,23 @@ def test_budget_upgrade_preserves_existing_task(platform_database):
         config.attributes["connection"] = connection
         command.upgrade(config, "0004_task_runtime")
     body = task_input(db)
-    task_id = tasks.create_task(db, body)
+    # Seed the historical schema without invoking newer application routing services.
+    with db.sessions.begin() as session:
+        task = CreativeTask(
+            work_id=body.work_id,
+            executor_id="human",
+            input_revision_id=body.input_revision_id,
+            task_type=body.task_type,
+            objective=body.objective,
+            request_key=body.request_key,
+            request_hash=tasks.fingerprint(body.model_dump()),
+            deadline_at=now() + timedelta(days=1),
+        )
+        session.add(task)
+        session.flush()
+        task_id = task.id
     db.upgrade()
-    assert db.require_current() == "0005_work_budgets"
+    assert db.require_current() == "0006_executor_routing"
     with db.sessions() as session:
         task = session.get(CreativeTask, task_id)
         assert (

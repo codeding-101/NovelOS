@@ -37,6 +37,7 @@ from app.platform.works import router as works_router
 from app.platform.asset_tools import router as asset_tools_router
 from app.platform.tasks import router as tasks_router
 from app.platform.budgets import router as budgets_router
+from app.platform.executors import router as executors_router
 
 logger = logging.getLogger("novelos.platform")
 PUBLIC_PATHS = {"/healthz", "/readyz", "/api/v1/auth/status", "/api/v1/auth/login"}
@@ -89,6 +90,7 @@ def create_app(
     app.include_router(asset_tools_router)
     app.include_router(tasks_router)
     app.include_router(budgets_router)
+    app.include_router(executors_router)
 
     @app.middleware("http")
     async def access_control(request: Request, call_next):
@@ -268,6 +270,7 @@ def create_app(
                 "local_task_execution": True,
                 "paid_execution": False,
                 "work_budgets": True,
+                "executor_routing": "local_only",
                 "legacy_import": "read_only_cli",
                 "asset_projections": True,
                 "finalization": False,
