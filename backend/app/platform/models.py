@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -334,4 +335,70 @@ class TaskSubmission(PlatformBase):
     disposition: Mapped[str] = mapped_column(String(24))
     reason: Mapped[str | None] = mapped_column(String(64))
     envelope: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkBudget(PlatformBase):
+    __tablename__ = "work_budgets"
+    __table_args__ = (
+        CheckConstraint("currency IN ('CNY','USD')", name="budget_currency"),
+        CheckConstraint(
+            "limit_microunits >= 0 AND limit_tokens >= 0 AND spent_microunits >= 0 AND held_microunits >= 0 AND spent_tokens >= 0 AND held_tokens >= 0",
+            name="budget_nonnegative",
+        ),
+    )
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), primary_key=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    limit_microunits: Mapped[int] = mapped_column(BigInteger)
+    limit_tokens: Mapped[int] = mapped_column(BigInteger)
+    spent_microunits: Mapped[int] = mapped_column(BigInteger, default=0)
+    held_microunits: Mapped[int] = mapped_column(BigInteger, default=0)
+    spent_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    held_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class BudgetReservation(PlatformBase):
+    __tablename__ = "budget_reservations"
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "operation_key", name="budget_operation"),
+        UniqueConstraint("executor_id", "receipt_key", name="budget_receipt"),
+        CheckConstraint(
+            "state IN ('RESERVED','DISPATCHED','UNKNOWN','SETTLED','RELEASED')",
+            name="reservation_state",
+        ),
+        CheckConstraint(
+            "reserved_microunits >= 0 AND reserved_tokens >= 0",
+            name="reservation_nonnegative",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("work_budgets.work_id"), index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("creative_tasks.id"), index=True)
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("task_attempts.id"), index=True)
+    executor_id: Mapped[str] = mapped_column(ForeignKey("executors.id"))
+    operation_key: Mapped[str] = mapped_column(String(128))
+    currency: Mapped[str] = mapped_column(String(3))
+    reserved_microunits: Mapped[int] = mapped_column(BigInteger)
+    reserved_tokens: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16), default="RESERVED")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    actual_microunits: Mapped[int | None] = mapped_column(BigInteger)
+    input_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    output_tokens: Mapped[int | None] = mapped_column(BigInteger)
+    receipt_key: Mapped[str | None] = mapped_column(String(128))
+    settlement_hash: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BudgetEvent(PlatformBase):
+    __tablename__ = "budget_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("work_budgets.work_id"), index=True)
+    reservation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("budget_reservations.id")
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    actor: Mapped[str] = mapped_column(String(32))
+    details: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

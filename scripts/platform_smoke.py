@@ -43,6 +43,69 @@ def free_port() -> int:
         return sock.getsockname()[1]
 
 
+def seed_unknown_budget(db, work_id: str) -> str:
+    """An isolated accounting fixture only; no HTTP dispatch or real provider exists."""
+    from sqlalchemy import select
+    from app.platform.models import Asset, AssetRevision, CreativeTask, Executor
+    from app.platform.task_protocol import TaskInput
+    from app.platform.budget_protocol import ReservationInput
+    from app.platform import task_service, budget_service
+
+    with db.sessions.begin() as session:
+        session.add(
+            Executor(
+                id="smoke_accounting",
+                name="离线账本验收",
+                mode="api",
+                capabilities=["analyze"],
+            )
+        )
+        revision = session.scalar(
+            select(AssetRevision)
+            .join(Asset, Asset.id == AssetRevision.asset_id)
+            .where(
+                Asset.work_id == work_id,
+                AssetRevision.title == "起风",
+                AssetRevision.number == Asset.head_version,
+            )
+        )
+        revision_id = revision.id
+    task_id = task_service.create_task(
+        db,
+        TaskInput(
+            work_id=work_id,
+            input_revision_id=revision_id,
+            executor_id="human",
+            task_type="analyze",
+            objective="离线预算故障演练，无真实调用",
+            request_key="budget-smoke",
+        ),
+    )
+    with db.sessions.begin() as session:
+        session.get(CreativeTask, task_id).executor_id = "smoke_accounting"
+    envelope = task_service.try_claim(db, task_id, "smoke_accounting")
+    with db.sessions.begin() as session:
+        task = task_service.locked_task(session, task_id)
+        reservation = budget_service.reserve(
+            session,
+            task,
+            envelope["attempt_id"],
+            ReservationInput(
+                operation_key="fake-call",
+                currency="CNY",
+                reserved_microunits=2_000_000,
+                reserved_tokens=200,
+            ),
+        )
+        reservation_id = reservation.id
+    with db.sessions.begin() as session:
+        assert budget_service.dispatch(
+            session, task_service.locked_task(session, task_id), reservation_id
+        )
+    task_service.control(db, task_id, "pause", 2)
+    return task_id
+
+
 def main() -> None:
     from cryptography.fernet import Fernet
     from playwright.sync_api import sync_playwright, expect
@@ -300,6 +363,83 @@ def main() -> None:
                 )
                 page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 1440, "height": 1100})
+                page.get_by_role("link", name="进入预算中心", exact=False).click()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                expect(page.get_by_role("region", name="预算概况")).to_contain_text(
+                    "尚未配置预算"
+                )
+                page.get_by_label("费用上限", exact=True).fill("12.345678")
+                page.get_by_label("token 上限", exact=True).fill("500000")
+                page.get_by_role("button", name="保存预算", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("预算已保存")
+                expect(page.get_by_role("region", name="预算概况")).to_contain_text(
+                    "12.345678"
+                )
+                page.reload()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                expect(page.get_by_label("费用上限", exact=True)).to_have_value(
+                    "12.345678"
+                )
+                expect(page.get_by_label("token 上限", exact=True)).to_have_value(
+                    "500000"
+                )
+                second_budget = context.new_page()
+                second_budget.goto(origin + "/budgets")
+                second_budget.get_by_label("当前作品").select_option(
+                    label="浏览器作品验证"
+                )
+                expect(
+                    second_budget.get_by_label("费用上限", exact=True)
+                ).to_have_value("12.345678")
+                page.get_by_label("费用上限", exact=True).fill("10")
+                page.get_by_role("button", name="保存预算", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("预算已保存")
+                second_budget.get_by_label("费用上限", exact=True).fill("11")
+                second_budget.get_by_role("button", name="保存预算", exact=True).click()
+                expect(
+                    second_budget.get_by_text("预算版本已变化", exact=False)
+                ).to_be_visible()
+                expect(
+                    second_budget.get_by_label("费用上限", exact=True)
+                ).to_have_value("11")
+                second_budget.close()
+                expect(page.get_by_role("region", name="调用账目")).to_contain_text(
+                    "没有调用记录"
+                )
+                budget_work_id = page.get_by_label("当前作品").input_value()
+                fixture_task = seed_unknown_budget(db, budget_work_id)
+                page.get_by_role("button", name="刷新账目").click()
+                expect(page.get_by_role("region", name="预算概况")).to_contain_text(
+                    "1 笔费用待确认"
+                )
+                page.get_by_role("button", name="核对这笔调用").click()
+                page.get_by_label("实际费用（CNY）", exact=True).fill("1.250001")
+                page.get_by_label("输入 token", exact=True).fill("40")
+                page.get_by_label("输出 token", exact=True).fill("60")
+                page.get_by_label("供应商回执标识").fill("offline-test-only")
+                page.get_by_label("核对依据").fill("本地故障演练，无真实服务请求或账单")
+                page.get_by_label("我已核对费用和 token 用量，并确认依据完整").check()
+                page.get_by_role("button", name="保存对账结果").click()
+                expect(page.get_by_role("status")).to_contain_text("对账记录已保存")
+                expect(page.get_by_role("region", name="调用账目")).to_contain_text(
+                    "1.250001"
+                )
+                assert (
+                    context.request.get(
+                        origin + f"/api/v1/tasks/{fixture_task}"
+                    ).json()["state"]
+                    == "PAUSED"
+                )
+                page.screenshot(
+                    path=str(output / "budgets-desktop.png"), full_page=True
+                )
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "budgets-mobile.png"), full_page=True)
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
+                page.get_by_role("link", name="返回控制台").click()
+                page.set_viewport_size({"width": 1440, "height": 1100})
                 page.get_by_role("link", name="进入任务中心", exact=False).click()
                 page.get_by_label("当前作品").select_option(label="浏览器作品验证")
                 page.get_by_label("输入版本").select_option(label="起风 · v4")
@@ -407,6 +547,10 @@ def main() -> None:
                             "version_reference_creation",
                             "worker_rebuild_and_current_text_search",
                             "legacy_source_record_preview",
+                            "budget_exact_amount_persists_after_reload",
+                            "budget_conflict_preserves_input",
+                            "budget_unknown_reconciliation_keeps_task_paused",
+                            "budget_mobile_no_horizontal_overflow",
                             "manual_task_checkpoint_reload_takeover_resume",
                             "candidate_does_not_change_asset",
                             "local_worker_task_completion",

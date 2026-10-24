@@ -28,6 +28,7 @@ from app.platform.models import (
 from app.platform.security import hashed, utc
 from app.platform.task_protocol import CheckpointInput, ResultEnvelope, TaskInput
 from app.platform.works import require_asset, require_work
+from app.platform import budget_service
 
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
 LEASE_SECONDS = 60
@@ -231,6 +232,10 @@ def try_claim(db, task_id, executor_id):
             return None
         if utc(task.deadline_at) <= now() or task.attempt_count >= task.max_attempts:
             transition(task, "FAILED", "LIMIT_EXCEEDED")
+            event(session, task, "blocked", reason=task.reason)
+            return None
+        if budget_service.unknown_count(session, task.work_id, task.id):
+            transition(task, "PAUSED", "BUDGET_UNCERTAIN")
             event(session, task, "blocked", reason=task.reason)
             return None
         dependencies = list(
@@ -467,6 +472,8 @@ def control(db, task_id, action, expected_version):
         if task.state in TERMINAL:
             raise HTTPException(409, "任务已经结束")
         if action == "resume":
+            if budget_service.unknown_count(session, task.work_id, task.id):
+                raise HTTPException(409, "此任务仍有未知费用，请先核对账目再恢复")
             if (
                 task.state != "PAUSED"
                 or task.attempt_count >= task.max_attempts
@@ -487,6 +494,7 @@ def control(db, task_id, action, expected_version):
             if task.state == "PAUSED" and action == "pause":
                 return {"state": task.state}
             if task.active_attempt_id:
+                budget_service.abandon_attempt(session, task, task.active_attempt_id)
                 attempt = session.get(TaskAttempt, task.active_attempt_id)
                 if attempt.state == "RUNNING":
                     attempt.state = "CANCELLED" if action == "cancel" else "PAUSED"
@@ -590,6 +598,8 @@ def recover(db, limit=100):
             deadline = utc(task.deadline_at) <= now()
             if not expired and not deadline:
                 continue
+            if attempt is not None:
+                budget_service.abandon_attempt(session, task, attempt.id)
             if attempt is not None and attempt.state == "RUNNING":
                 attempt.state = "EXPIRED"
             if deadline or task.attempt_count >= task.max_attempts:
@@ -598,6 +608,8 @@ def recover(db, limit=100):
                     "FAILED",
                     "DEADLINE_EXCEEDED" if deadline else "ATTEMPTS_EXHAUSTED",
                 )
+            elif budget_service.unknown_count(session, task.work_id, task.id):
+                transition(task, "PAUSED", "BUDGET_UNCERTAIN")
             else:
                 transition(
                     task,

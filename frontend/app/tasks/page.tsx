@@ -98,6 +98,7 @@ const reasons: Record<string, string> = {
   USER_REQUEST: "用户操作",
   ATTEMPT_INACTIVE: "来自已结束或过期的执行",
   OUTPUT_SCOPE_INVALID: "结果超出授权输入范围",
+  BUDGET_UNCERTAIN: "调用费用尚不明确，请在预算中心核对后恢复",
 };
 
 async function allPages<T>(path: string) {

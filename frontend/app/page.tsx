@@ -218,12 +218,15 @@ export default function Page() {
             <p>
               <a href="/tasks">进入任务中心 →</a>
             </p>
+            <p>
+              <a href="/budgets">进入预算中心 →</a>
+            </p>
           </section>
           <div className={styles.cards}>
             <section className={styles.card}>
               <h2>服务状态</h2>
               <strong>{runtime ? "已连接" : "正在读取"}</strong>
-              <p>当前阶段：持久任务基础</p>
+              <p>当前阶段：持久任务与预算基础</p>
               <p>
                 后台进程：
                 {runtime?.workers.filter(
