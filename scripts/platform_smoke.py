@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import sqlite3
 import socket
 import subprocess
 import sys
@@ -48,6 +49,7 @@ def main() -> None:
     from app.platform.config import PlatformSettings
     from app.platform.database import PlatformDatabase
     from app.platform.security import create_owner
+    from app.platform.legacy_import import import_legacy
 
     output = ROOT / "data" / "validation"
     output.mkdir(parents=True, exist_ok=True)
@@ -63,11 +65,19 @@ def main() -> None:
             master_key=Fernet.generate_key().decode(),
             database_url=f"sqlite:///{(folder / 'platform.db').as_posix()}",
             public_origin=origin,
+            storage_root=folder / "files",
         )
         db = PlatformDatabase(settings)
         db.upgrade()
         with db.sessions.begin() as session:
             create_owner(session, "owner", password)
+        legacy_path = folder / "legacy.db"
+        with sqlite3.connect(legacy_path) as connection:
+            connection.executescript("""CREATE TABLE novels(id TEXT, title TEXT);
+                CREATE TABLE chapters(id TEXT, novel_id TEXT, title TEXT, content TEXT, status TEXT);
+                INSERT INTO novels VALUES('old-work', '导入来源验收');
+                INSERT INTO chapters VALUES('old-chapter', 'old-work', '旧章', '来源原稿', 'COMPLETED');""")
+        import_legacy(db, legacy_path, "browser-fixture")
         db.engine.dispose()
         env = {
             **os.environ,
@@ -75,6 +85,7 @@ def main() -> None:
             "NOVELOS_DATABASE_URL": settings.database_url,
             "NOVELOS_MASTER_KEY": settings.master_key,
             "NOVELOS_PUBLIC_ORIGIN": origin,
+            "NOVELOS_STORAGE_ROOT": str(settings.storage_root),
             "NOVELOS_BACKEND_URL": f"http://127.0.0.1:{api_port}",
             "NEXT_TELEMETRY_DISABLED": "1",
         }
@@ -110,6 +121,11 @@ def main() -> None:
         try:
             api = start(api_command, ROOT / "backend", "api")
             wait_url(f"http://127.0.0.1:{api_port}/readyz", api)
+            start(
+                [sys.executable, "-m", "app.platform.worker"],
+                ROOT / "backend",
+                "worker",
+            )
             web = start(
                 [
                     "node",
@@ -234,6 +250,46 @@ def main() -> None:
                 expect(
                     page.get_by_text("原稿已导入为草稿。原文件字节和校验值已单独保留。")
                 ).to_be_visible()
+                page.get_by_label("上传附件", exact=True).set_input_files(
+                    {
+                        "name": "资料原件.bin",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"original-attachment\x00\xff",
+                    }
+                )
+                expect(
+                    page.get_by_text(
+                        "附件原文件已保存，可以下载或随作品导出。", exact=False
+                    )
+                ).to_be_visible()
+                with page.expect_download() as attachment_download:
+                    page.get_by_role("link", name="资料原件.bin").click()
+                assert (
+                    Path(attachment_download.value.path()).read_bytes()
+                    == b"original-attachment\x00\xff"
+                )
+                page.get_by_label("引用来源").select_option(label="起风")
+                page.get_by_label("引用目标").select_option(label="旧稿")
+                page.get_by_role("button", name="保存版本引用").click()
+                expect(
+                    page.get_by_text("引用已绑定双方当前已保存的版本。", exact=False)
+                ).to_be_visible()
+                page.get_by_role("button", name="重建索引与文件副本").click()
+                expect(
+                    page.get_by_text("已建立索引：2 / 2", exact=False)
+                ).to_be_visible(timeout=20000)
+                page.get_by_label("搜索当前正文").fill("山风")
+                page.get_by_role("button", name="搜索", exact=True).click()
+                expect(
+                    page.get_by_role("button", name="起风 · 版本 4", exact=True)
+                ).to_be_visible()
+                page.get_by_label("当前作品").select_option(label="导入来源验收")
+                page.get_by_role("button", name="chapters · old-chapter").click()
+                expect(page.get_by_label("旧库原始记录")).to_contain_text(
+                    '"formal_memory": false'
+                )
+                expect(page.get_by_label("旧库原始记录")).to_contain_text("来源原稿")
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
                 page.get_by_role("button", name="章节 起风").click()
                 page.get_by_role("button", name="版本 2", exact=False).click()
                 page.screenshot(path=str(output / "works-desktop.png"), full_page=True)
@@ -276,6 +332,10 @@ def main() -> None:
                             "history_compare_restore_creates_revision",
                             "draft_export_download",
                             "original_markdown_import",
+                            "attachment_upload_and_exact_download",
+                            "version_reference_creation",
+                            "worker_rebuild_and_current_text_search",
+                            "legacy_source_record_preview",
                             "works_mobile_no_horizontal_overflow",
                             "mobile_no_horizontal_overflow",
                             "delete",

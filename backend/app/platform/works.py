@@ -17,7 +17,17 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 
-from app.platform.models import Asset, AssetRevision, AuditEvent, OriginalUpload, Work
+from app.platform.models import (
+    Asset,
+    AssetRevision,
+    AuditEvent,
+    OriginalUpload,
+    Work,
+    Attachment,
+    AssetReference,
+    LegacyRecord,
+)
+from app.platform.projections import enqueue
 
 router = APIRouter(prefix="/api/v1/works", tags=["works"])
 TEXT_LIMIT = 2 * 1024 * 1024
@@ -161,6 +171,7 @@ def create_asset(session, work_id, body: AssetInput):
     session.add(revision)
     session.flush()
     audit(session, "asset.created", work_id, asset.id, revision_id=revision.id)
+    enqueue(session, work_id, "revision", revision.id)
     return asset, revision
 
 
@@ -188,6 +199,7 @@ def append_revision(
     )
     session.add(revision)
     session.flush()
+    enqueue(session, asset.work_id, "revision", revision.id)
     audit(
         session,
         "asset.restored" if restored_from else "asset.saved",
@@ -424,11 +436,12 @@ def import_text(work_id: str, body: ImportInput, request: Request):
         ) from None
     with request.app.state.database.sessions.begin() as session:
         asset, revision = create_asset(session, work_id, data)
-        session.add(
-            OriginalUpload(
-                revision_id=revision.id, filename=filename, sha256=digest(raw), data=raw
-            )
+        original = OriginalUpload(
+            revision_id=revision.id, filename=filename, sha256=digest(raw), data=raw
         )
+        session.add(original)
+        session.flush()
+        enqueue(session, work_id, "original", original.id)
         audit(
             session,
             "asset.imported",
@@ -485,7 +498,7 @@ def export_work(work_id: str, request: Request):
                 )
             )
             manifest = {
-                "format_version": 1,
+                "format_version": 2,
                 "status": "DRAFT",
                 "finalization": False,
                 "work": {
@@ -495,11 +508,16 @@ def export_work(work_id: str, request: Request):
                 },
                 "assets": [],
                 "files": [],
+                "references": [],
             }
             byte_count = 0
+            exported_revisions = set()
+            asset_ids = {asset.id for asset in assets}
 
-            def put(zipfile, path, data):
+            def put(zipfile, path, data, expected_hash=None):
                 nonlocal byte_count
+                if expected_hash is not None and digest(data) != expected_hash:
+                    raise HTTPException(503, "原文或附件校验失败，导出已中止")
                 byte_count += len(data)
                 if byte_count > 100 * 1024 * 1024 or len(manifest["files"]) >= 10_000:
                     raise HTTPException(
@@ -529,8 +547,14 @@ def export_work(work_id: str, request: Request):
                         .order_by(AssetRevision.number)
                     )
                     for revision in session.scalars(query).yield_per(1):
+                        exported_revisions.add(revision.id)
                         prefix = f"assets/{asset.id}/v{revision.number}"
-                        put(zipfile, prefix + ".txt", revision.content.encode("utf-8"))
+                        put(
+                            zipfile,
+                            prefix + ".txt",
+                            revision.content.encode("utf-8"),
+                            revision.sha256,
+                        )
                         put(
                             zipfile,
                             prefix + ".json",
@@ -547,10 +571,65 @@ def export_work(work_id: str, request: Request):
                             )
                         )
                         if original is not None:
-                            put(zipfile, f"originals/{original.id}.bin", original.data)
+                            put(
+                                zipfile,
+                                f"originals/{original.id}.bin",
+                                original.data,
+                                original.sha256,
+                            )
                             manifest["files"][-1].update(
                                 filename=original.filename, revision_id=revision.id
                             )
+                for attachment in session.scalars(
+                    select(Attachment).where(Attachment.work_id == work_id)
+                ).yield_per(1):
+                    if (
+                        attachment.asset_id is not None
+                        and attachment.asset_id not in asset_ids
+                    ):
+                        continue
+                    put(
+                        zipfile,
+                        f"attachments/{attachment.id}.bin",
+                        attachment.data,
+                        attachment.sha256,
+                    )
+                    manifest["files"][-1].update(
+                        filename=attachment.filename, asset_id=attachment.asset_id
+                    )
+                for ref in session.scalars(
+                    select(AssetReference).where(AssetReference.work_id == work_id)
+                ):
+                    if (
+                        ref.source_revision_id in exported_revisions
+                        and ref.target_revision_id in exported_revisions
+                    ):
+                        manifest["references"].append(
+                            dict(
+                                id=ref.id,
+                                source_revision_id=ref.source_revision_id,
+                                target_revision_id=ref.target_revision_id,
+                                relation=ref.relation,
+                            )
+                        )
+                for record in session.scalars(
+                    select(LegacyRecord).where(LegacyRecord.work_id == work_id)
+                ).yield_per(1):
+                    metadata = dict(
+                        source_id=record.source_id,
+                        table=record.table_name,
+                        legacy_id=record.legacy_id,
+                        asset_id=record.asset_id,
+                        revision_id=record.revision_id,
+                        payload_sha256=record.sha256,
+                        payload=record.payload,
+                        formal_memory=False,
+                    )
+                    put(
+                        zipfile,
+                        f"legacy/{record.id}.json",
+                        json.dumps(metadata, ensure_ascii=False, indent=2).encode(),
+                    )
                 zipfile.writestr(
                     "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
                 )

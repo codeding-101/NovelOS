@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { platformRequest } from "@/lib/platform";
 import shell from "../platform.module.css";
 import styles from "./works.module.css";
+import WorkTools from "./WorkTools";
 
 type Work = { id: string; title: string; description: string };
 type Kind = "volume" | "chapter" | "scene" | "material";
@@ -13,6 +14,7 @@ type Asset = {
   kind: Kind;
   parent_id: string | null;
   head_version: number;
+  revision_id: string;
 };
 type Revision = {
   id: string;
@@ -627,7 +629,11 @@ export default function WorksPage() {
                         <p>标题：{preview.title}</p>
                         <pre aria-label="版本差异">{diff}</pre>
                         <label htmlFor="historical-content">历史正文</label>
-                        <textarea id="historical-content" readOnly value={preview.content} />
+                        <textarea
+                          id="historical-content"
+                          readOnly
+                          value={preview.content}
+                        />
                         <p className={styles.hash}>SHA-256：{preview.sha256}</p>
                         <button
                           disabled={busy || preview.id === detail.revision.id}
@@ -642,6 +648,14 @@ export default function WorksPage() {
               )}
             </section>
           </div>
+          <WorkTools
+            key={workId}
+            workId={workId}
+            assets={assets}
+            onOpen={(id) => {
+              if (!busy && mayDiscard()) void run(() => openAsset(id));
+            }}
+          />
           {audit.length > 0 && (
             <section className={styles.audit}>
               <h2>最近操作</h2>

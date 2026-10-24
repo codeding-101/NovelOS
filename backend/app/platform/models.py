@@ -144,3 +144,97 @@ class OriginalUpload(PlatformBase):
     filename: Mapped[str] = mapped_column(String(256))
     sha256: Mapped[str] = mapped_column(String(64))
     data: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class Attachment(PlatformBase):
+    __tablename__ = "attachments"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"))
+    filename: Mapped[str] = mapped_column(String(256))
+    sha256: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ProjectionJob(PlatformBase):
+    __tablename__ = "projection_jobs"
+    __table_args__ = (
+        UniqueConstraint("kind", "target_id", name="projection_target"),
+        CheckConstraint(
+            "kind IN ('revision','attachment','original')", name="projection_kind"
+        ),
+        CheckConstraint(
+            "state IN ('pending','running','failed','done')", name="projection_state"
+        ),
+        CheckConstraint("attempts >= 0", name="projection_attempts"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    target_id: Mapped[str] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token: Mapped[str | None] = mapped_column(String(32))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+class SearchDocument(PlatformBase):
+    __tablename__ = "search_documents"
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("asset_revisions.id"), primary_key=True
+    )
+    text: Mapped[str] = mapped_column(Text)
+
+
+class AssetReference(PlatformBase):
+    __tablename__ = "asset_references"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_revision_id",
+            "target_revision_id",
+            "relation",
+            name="reference_edge",
+        ),
+        CheckConstraint(
+            "relation IN ('reference','depends_on')", name="reference_relation"
+        ),
+        CheckConstraint(
+            "source_revision_id <> target_revision_id", name="reference_not_self"
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    source_revision_id: Mapped[str] = mapped_column(ForeignKey("asset_revisions.id"))
+    target_revision_id: Mapped[str] = mapped_column(ForeignKey("asset_revisions.id"))
+    relation: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LegacyImport(PlatformBase):
+    __tablename__ = "legacy_imports"
+    source_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    report: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LegacyRecord(PlatformBase):
+    __tablename__ = "legacy_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_id", "table_name", "legacy_id", name="legacy_record_identity"
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    source_id: Mapped[str] = mapped_column(ForeignKey("legacy_imports.source_id"))
+    table_name: Mapped[str] = mapped_column(String(64))
+    legacy_id: Mapped[str] = mapped_column(String(128))
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"))
+    revision_id: Mapped[str | None] = mapped_column(ForeignKey("asset_revisions.id"))
+    sha256: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)

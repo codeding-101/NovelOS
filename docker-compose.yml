@@ -8,6 +8,7 @@ x-platform-env: &platform-env
   NOVELOS_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
   NOVELOS_MASTER_KEY: ${NOVELOS_MASTER_KEY:?Set NOVELOS_MASTER_KEY in .env}
   NOVELOS_PUBLIC_ORIGIN: ${NOVELOS_PUBLIC_ORIGIN:?Set NOVELOS_PUBLIC_ORIGIN in .env}
+  NOVELOS_STORAGE_ROOT: /data/projections
 
 services:
   postgres:
@@ -53,6 +54,8 @@ services:
       <<: *platform-env
       NOVELOS_WORKER_ID: primary
     command: ["python", "-m", "app.platform.worker"]
+    volumes:
+      - platform-files:/data
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -89,6 +92,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  platform-files:
   platform-postgres:
   caddy-data:
   caddy-config:

@@ -26,6 +26,7 @@ def platform_database(request, tmp_path):
         database_url=url,
         master_key=Fernet.generate_key().decode(),
         public_origin="http://testserver",
+        storage_root=tmp_path / "files",
     )
     db = PlatformDatabase(settings)
     # The PostgreSQL fixture creates a fresh schema per test, never drops shared tables.

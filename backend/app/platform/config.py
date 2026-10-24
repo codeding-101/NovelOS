@@ -20,6 +20,7 @@ class PlatformSettings:
     session_seconds: int = 12 * 60 * 60
     login_limit: int = 5
     login_window_seconds: int = 15 * 60
+    storage_root: Path = field(default=ROOT / "data" / "platform" / "files")
 
     @classmethod
     def from_env(cls) -> PlatformSettings:
@@ -35,6 +36,11 @@ class PlatformSettings:
                 database=os.getenv("NOVELOS_DB_NAME", "novelos"),
             ).render_as_string(hide_password=False)
         return cls(
+            storage_root=Path(
+                os.getenv(
+                    "NOVELOS_STORAGE_ROOT", str(ROOT / "data" / "platform" / "files")
+                )
+            ),
             environment=os.getenv("NOVELOS_ENV", "development"),
             database_url=database_url or f"sqlite+pysqlite:///{path.as_posix()}",
             master_key=os.getenv("NOVELOS_MASTER_KEY", ""),

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import closing
 import sqlite3
 from pathlib import Path
 
 
 def inspect_legacy(path: Path) -> dict:
     path = path.resolve(strict=True)
-    with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as connection:
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as connection:
         connection.execute("PRAGMA query_only=ON")
         connection.execute(
             "BEGIN"
@@ -32,6 +33,7 @@ def inspect_legacy(path: Path) -> dict:
             "events",
             "timeline_entries",
             "foreshadowing",
+            "foreshadowings",
         )
         counts = {
             table: connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
@@ -55,5 +57,5 @@ def inspect_legacy(path: Path) -> dict:
             "counts": counts,
             "chapters": chapters,
             "imports_data": False,
-            "next_step": "M2: migrate assets and versions into the new schema",
+            "next_step": "Use import-legacy with a stable --source-id to import an explicit snapshot",
         }

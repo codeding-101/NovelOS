@@ -1,9 +1,10 @@
-"""Independent M1 worker lifecycle. Task claiming is introduced in M3."""
+"""Project file copies and indexes. Creative task claiming is introduced in M3."""
 
 from __future__ import annotations
 
 import argparse
 import os
+import logging
 import signal
 import socket
 import threading
@@ -11,6 +12,7 @@ import threading
 from app.platform.config import PlatformSettings
 from app.platform.database import PlatformDatabase
 from app.platform.models import WorkerHeartbeat, now
+from app.platform.projections import LocalFileStore, process_batch
 
 
 def heartbeat(db: PlatformDatabase, worker_id: str, state: str = "idle") -> None:
@@ -37,9 +39,16 @@ def main() -> None:
     try:
         while not stop.is_set():
             heartbeat(db, worker_id)
+            try:
+                processed = process_batch(db, LocalFileStore(settings.storage_root))
+            except Exception as exc:
+                logging.getLogger(__name__).error(
+                    "projection_batch_failed type=%s", type(exc).__name__
+                )
+                processed = 0
             if args.once:
                 break
-            stop.wait(15)
+            stop.wait(0.1 if processed else 5)
     finally:
         heartbeat(db, worker_id, "stopped")
         db.engine.dispose()
