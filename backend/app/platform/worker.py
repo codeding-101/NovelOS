@@ -1,4 +1,4 @@
-"""Project file copies and indexes. Creative task claiming is introduced in M3."""
+"""Process asset projections, recover expired tasks, and run local diagnostic tasks."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from app.platform.config import PlatformSettings
 from app.platform.database import PlatformDatabase
 from app.platform.models import WorkerHeartbeat, now
 from app.platform.projections import LocalFileStore, process_batch
+from app.platform.task_service import run_local
 
 
 def heartbeat(db: PlatformDatabase, worker_id: str, state: str = "idle") -> None:
@@ -39,13 +40,20 @@ def main() -> None:
     try:
         while not stop.is_set():
             heartbeat(db, worker_id)
-            try:
-                processed = process_batch(db, LocalFileStore(settings.storage_root))
-            except Exception as exc:
-                logging.getLogger(__name__).error(
-                    "projection_batch_failed type=%s", type(exc).__name__
-                )
-                processed = 0
+            processed = 0
+            for kind, operation in (
+                (
+                    "projections",
+                    lambda: process_batch(db, LocalFileStore(settings.storage_root)),
+                ),
+                ("tasks", lambda: int(run_local(db))),
+            ):
+                try:
+                    processed += operation()
+                except Exception as exc:
+                    logging.getLogger(__name__).error(
+                        "worker_step_failed kind=%s type=%s", kind, type(exc).__name__
+                    )
             if args.once:
                 break
             stop.wait(0.1 if processed else 5)

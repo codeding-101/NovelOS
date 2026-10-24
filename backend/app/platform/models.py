@@ -238,3 +238,100 @@ class LegacyRecord(PlatformBase):
     revision_id: Mapped[str | None] = mapped_column(ForeignKey("asset_revisions.id"))
     sha256: Mapped[str] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSON)
+
+
+class Executor(PlatformBase):
+    __tablename__ = "executors"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    mode: Mapped[str] = mapped_column(String(32))
+    capabilities: Mapped[list] = mapped_column(JSON)
+
+
+class CreativeTask(PlatformBase):
+    __tablename__ = "creative_tasks"
+    __table_args__ = (
+        UniqueConstraint("work_id", "request_key", name="task_request_key"),
+        CheckConstraint(
+            "state IN ('QUEUED','RUNNING','RETRY_WAIT','PAUSED','SUCCEEDED','FAILED','CANCELLED')",
+            name="task_state",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND max_attempts BETWEEN 1 AND 5",
+            name="task_attempt_limits",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    executor_id: Mapped[str] = mapped_column(ForeignKey("executors.id"))
+    input_revision_id: Mapped[str] = mapped_column(ForeignKey("asset_revisions.id"))
+    task_type: Mapped[str] = mapped_column(String(32))
+    objective: Mapped[str] = mapped_column(Text)
+    request_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(24), default="QUEUED", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    active_attempt_id: Mapped[str | None] = mapped_column(String(32))
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TaskDependency(PlatformBase):
+    __tablename__ = "task_dependencies"
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("creative_tasks.id"), primary_key=True
+    )
+    depends_on_id: Mapped[str] = mapped_column(
+        ForeignKey("creative_tasks.id"), primary_key=True
+    )
+
+
+class TaskAttempt(PlatformBase):
+    __tablename__ = "task_attempts"
+    __table_args__ = (
+        UniqueConstraint("task_id", "number", name="task_attempt_number"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    task_id: Mapped[str] = mapped_column(ForeignKey("creative_tasks.id"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    token_hash: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(24), default="RUNNING")
+    lease_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TaskCheckpoint(PlatformBase):
+    __tablename__ = "task_checkpoints"
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "sequence", name="checkpoint_sequence"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    task_id: Mapped[str] = mapped_column(ForeignKey("creative_tasks.id"), index=True)
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("task_attempts.id"))
+    sequence: Mapped[int] = mapped_column(Integer)
+    step: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TaskSubmission(PlatformBase):
+    __tablename__ = "task_submissions"
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "submission_key", name="result_submission_key"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    task_id: Mapped[str] = mapped_column(ForeignKey("creative_tasks.id"), index=True)
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("task_attempts.id"))
+    submission_key: Mapped[str] = mapped_column(String(128))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    disposition: Mapped[str] = mapped_column(String(24))
+    reason: Mapped[str | None] = mapped_column(String(64))
+    envelope: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

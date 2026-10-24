@@ -1,0 +1,139 @@
+.workPicker {
+  max-width: 480px;
+  margin: 24px 0;
+}
+.create {
+  padding: 24px;
+  background: white;
+  border: 1px solid #dce2db;
+  border-radius: 12px;
+  margin: 24px 0;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 20px;
+}
+.create p,
+.detail p {
+  font-size: 13px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  border: 1px solid #dce2db;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.list {
+  padding: 22px;
+  background: #f9faf7;
+  border-right: 1px solid #dce2db;
+  min-width: 0;
+}
+.list ul,
+.submissions {
+  list-style: none;
+  padding: 0;
+}
+.list ul {
+  max-height: 650px;
+  overflow: auto;
+}
+.list li,
+.submissions li {
+  margin: 10px 0;
+}
+.list button,
+.submissions button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.list li button {
+  width: 100%;
+}
+.list small {
+  display: block;
+  margin-top: 6px;
+  color: #647268;
+}
+.list button[aria-pressed="true"] {
+  background: #e6efe7;
+  border-color: #47745a;
+}
+.detail {
+  min-width: 0;
+  padding: 24px;
+}
+.detail h2 {
+  overflow-wrap: anywhere;
+}
+.manual {
+  margin: 24px 0;
+  padding: 18px;
+  background: #f4f5f1;
+  border-radius: 8px;
+}
+.manual label {
+  margin-top: 16px;
+}
+.manual textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  padding: 14px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.8;
+  border: 1px solid #c9d2ca;
+  border-radius: 6px;
+  background: #fff;
+  color: #26352e;
+  margin: 8px 0;
+}
+.manual textarea:focus {
+  outline: 2px solid #47745a;
+}
+.record,
+.manual pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 250px;
+  overflow: auto;
+  font-size: 13px;
+  background: #f4f5f1;
+  padding: 12px;
+}
+@media (max-width: 800px) {
+  .fields {
+    grid-template-columns: 1fr 1fr;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .list {
+    border-right: 0;
+    border-bottom: 1px solid #dce2db;
+  }
+  .list ul {
+    max-height: 250px;
+  }
+}
+@media (max-width: 480px) {
+  .fields {
+    grid-template-columns: 1fr;
+  }
+  .create,
+  .detail {
+    padding: 18px;
+  }
+}

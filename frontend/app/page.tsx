@@ -215,12 +215,15 @@ export default function Page() {
               作品空间已开放草稿编辑、版本历史和原稿导入导出。任务执行与质量门禁将按开发计划逐步接入。
             </p>
             <a href="/works">进入作品空间 →</a>
+            <p>
+              <a href="/tasks">进入任务中心 →</a>
+            </p>
           </section>
           <div className={styles.cards}>
             <section className={styles.card}>
               <h2>服务状态</h2>
               <strong>{runtime ? "已连接" : "正在读取"}</strong>
-              <p>当前阶段：作品与版本管理</p>
+              <p>当前阶段：持久任务基础</p>
               <p>
                 后台进程：
                 {runtime?.workers.filter(
@@ -237,10 +240,10 @@ export default function Page() {
             </section>
             <section className={styles.card}>
               <h2>创作执行</h2>
-              <strong>尚未开放</strong>
+              <strong>人工与本地校验</strong>
               <p>
-                后续将支持模型 API、外部 Agent
-                和用户任务，并统一记录执行进度与预算。
+                已开放任务排队、检查点和候选结果。真实模型 API、外部 Agent
+                与费用控制仍在开发中。
               </p>
             </section>
             <section className={styles.card}>

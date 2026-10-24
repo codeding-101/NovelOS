@@ -1,6 +1,6 @@
 # NovelOS 控制平台部署与开发
 
-适用阶段：M1／M2。作品资产管理与后台文件／索引同步已开放，AI 任务和朱雀检测尚未开放。本指南使用新入口，不使用旧版 `app.main:app`。
+适用阶段：M1—M3 首个工作包。作品资产管理、后台文件／索引同步、人工任务与本地流程校验已开放，真实 AI 执行和朱雀检测尚未开放。本指南使用新入口，不使用旧版 `app.main:app`。
 
 ## 1. 服务器部署
 
@@ -62,7 +62,7 @@ cd backend
 .\.venv\Scripts\python.exe -m app.platform.worker
 ```
 
-Worker 报告心跳并处理原稿／附件文件副本和检索索引，不执行创作。运行 `--once` 会处理最多 20 个待办并记录正常停止状态；正常停止后控制台不将其显示为在线工作进程。
+Worker 报告心跳，处理原稿／附件文件副本和检索索引，恢复过期任务并执行本地确定性校验。运行 `--once` 会处理最多 20 个派生同步待办、扫描最多 100 个待恢复任务并执行至多 1 个本地任务，然后记录正常停止状态；正常停止后控制台不将其显示为在线工作进程。文件同步与任务步骤分别捕获异常，文件适配器故障不会跳过任务处理。人工任务由网站领取；使用方法与期限见 [任务中心指南](task-runtime.md)。
 
 本地也可设置 `NOVELOS_DATABASE_URL=postgresql+psycopg://...` 使用 PostgreSQL。Compose 则通过 `NOVELOS_DB_HOST/PORT/NAME/USER/PASSWORD` 分项传递连接信息。禁止将实际连接密码提交到示例或文档。
 
@@ -90,7 +90,7 @@ cd backend
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py tests\test_platform_works.py tests\test_platform_delivery.py -v
+.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py tests\test_platform_works.py tests\test_platform_delivery.py tests\test_platform_tasks.py -v
 ```
 
 默认测试 SQLite；设置 `NOVELOS_TEST_POSTGRES_URL` 后也运行 PostgreSQL 用例。该地址必须指向隔离测试数据库；每个 PostgreSQL 用例创建唯一 schema，结束时只删除自己的 schema。覆盖登录保护、持久限流、CSRF、会话过期和撤销、凭证加密、不泄露校验输入、未知迁移版本、重复初始化和只读旧库盘点。
@@ -102,13 +102,15 @@ cd backend
 .\backend\.venv\Scripts\python.exe scripts\platform_smoke.py
 ```
 
-Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PATH` 指定兼容浏览器。其他系统使用 Playwright 已安装的 Chromium。脚本验证登录、凭证、API 重启后持久化、作品编辑、双页面冲突、历史比较与恢复、导入导出、手机布局和退出，并在 `data/validation` 保存报告及截图。测试用服务结束后停止，不改动用户原库。
+Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PATH` 指定兼容浏览器。其他系统使用 Playwright 已安装的 Chromium。脚本验证登录、凭证、API 重启后持久化、作品编辑、双页面冲突、历史比较与恢复、导入导出、人工检查点刷新接续、暂停恢复、候选不改正文、本地自动执行、取消、手机布局和退出，并在 `data/validation` 保存报告及截图。测试用服务结束后停止，不改动用户原库。
 
 ## 5. 升级与恢复边界
 
 升级前保留数据库及主密钥备份；版本变更通过 `python -m app.platform.cli upgrade` 或 migrate 服务执行。`python -m app.platform.cli check` 仅检查版本。未知版本和未受管理的非空库会被拒绝，不能用强制 stamp 掩盖不兼容。
 
-当前尚无完整生产备份调度和异机恢复工具。M2 的资产与派生副本恢复已通过本地验收；生产使用仍需完成部署验证、M3 任务恢复和 M9 备份恢复验收。M0 旧库快照脚本不能证明 PostgreSQL 全平台灾难恢复已经覆盖。
+当前 schema 版本为 `0004_task_runtime`；迁移新增任务、执行尝试、检查点、结果回执与两个本地执行者，不改动已有正文和版本。API 与 Worker 都须升级后再启动。迁移不提供破坏性降级，恢复旧应用版本须使用升级前数据库备份。
+
+当前尚无完整生产备份调度和异机恢复工具。M2 的资产与派生副本恢复、M3 首个工作包的本地任务恢复已通过本地验收；生产使用仍需完成部署验证、真实执行者与预算故障恢复、M9 备份恢复验收。M0 旧库快照脚本不能证明 PostgreSQL 全平台灾难恢复已经覆盖。
 
 ## 6. 当前限制
 

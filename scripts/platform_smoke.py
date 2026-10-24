@@ -300,6 +300,77 @@ def main() -> None:
                 )
                 page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 1440, "height": 1100})
+                page.get_by_role("link", name="进入任务中心", exact=False).click()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("输入版本").select_option(label="起风 · v4")
+                page.get_by_label("任务目标").fill("人工任务验证")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                page.get_by_role("button", name="领取人工任务").click()
+                page.get_by_label("进度笔记").fill("已经完成第一步，刷新后继续。")
+                page.get_by_role("button", name="保存检查点").click()
+                expect(
+                    page.get_by_text("检查点已保存，中断后可以恢复查看。")
+                ).to_be_visible()
+                page.reload()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_role("button", name="人工任务验证", exact=False).click()
+                page.get_by_role("button", name="接续人工任务").click()
+                expect(page.get_by_label("进度笔记")).to_have_value(
+                    "已经完成第一步，刷新后继续。"
+                )
+                page.get_by_role("button", name="暂停任务").click()
+                page.get_by_role("button", name="恢复排队").click()
+                page.get_by_role("button", name="领取人工任务").click()
+                page.get_by_label("候选结果", exact=True).fill(
+                    "这是人工提供的候选，不应覆盖正文。"
+                )
+                page.get_by_role("button", name="提交候选结果").click()
+                expect(
+                    page.get_by_text("结果已保存：已接收候选。正文和定稿状态未变。")
+                ).to_be_visible()
+                page.get_by_role("button", name="已接收候选", exact=True).click()
+                expect(page.get_by_label("人工候选结果", exact=True)).to_have_value(
+                    "这是人工提供的候选，不应覆盖正文。"
+                )
+                works = context.request.get(origin + "/api/v1/works").json()
+                work_id = next(
+                    item["id"] for item in works if item["title"] == "浏览器作品验证"
+                )
+                assets = context.request.get(
+                    origin + f"/api/v1/works/{work_id}/assets"
+                ).json()
+                chapter = next(item for item in assets if item["title"] == "起风")
+                assert chapter["head_version"] == 4
+                page.get_by_label("输入版本").select_option(label="起风 · v4")
+                page.get_by_label("执行者", exact=True).select_option("local_test")
+                page.get_by_label("任务目标").fill("离线任务验证")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "候选已接收", timeout=20000
+                )
+                page.get_by_role("button", name="已接收候选", exact=True).click()
+                expect(
+                    page.get_by_label("本地流程校验结果", exact=True)
+                ).to_be_visible()
+                assert (
+                    "字符数"
+                    in page.get_by_label("本地流程校验结果", exact=True).input_value()
+                )
+                page.screenshot(path=str(output / "tasks-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "tasks-mobile.png"), full_page=True)
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
+                page.get_by_label("执行者", exact=True).select_option("human")
+                page.get_by_label("任务目标").fill("取消任务验证")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                page.get_by_role("button", name="取消任务", exact=True).click()
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "已取消"
+                )
+                page.get_by_role("link", name="返回控制台").click()
+                page.set_viewport_size({"width": 1440, "height": 1100})
                 page.screenshot(
                     path=str(output / "platform-desktop.png"), full_page=True
                 )
@@ -336,6 +407,11 @@ def main() -> None:
                             "version_reference_creation",
                             "worker_rebuild_and_current_text_search",
                             "legacy_source_record_preview",
+                            "manual_task_checkpoint_reload_takeover_resume",
+                            "candidate_does_not_change_asset",
+                            "local_worker_task_completion",
+                            "task_cancellation",
+                            "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",
                             "mobile_no_horizontal_overflow",
                             "delete",

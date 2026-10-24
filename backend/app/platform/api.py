@@ -35,6 +35,7 @@ from app.platform.security import (
 )
 from app.platform.works import router as works_router
 from app.platform.asset_tools import router as asset_tools_router
+from app.platform.tasks import router as tasks_router
 
 logger = logging.getLogger("novelos.platform")
 PUBLIC_PATHS = {"/healthz", "/readyz", "/api/v1/auth/status", "/api/v1/auth/login"}
@@ -85,6 +86,7 @@ def create_app(
     app.state.settings = settings
     app.include_router(works_router)
     app.include_router(asset_tools_router)
+    app.include_router(tasks_router)
 
     @app.middleware("http")
     async def access_control(request: Request, call_next):
@@ -122,7 +124,9 @@ def create_app(
                     length += len(chunk)
                     limit = (
                         8 * 1024 * 1024
-                        if request.url.path.startswith("/api/v1/works/")
+                        if request.url.path.startswith(
+                            ("/api/v1/works/", "/api/v1/tasks/")
+                        )
                         else 65536
                     )
                     if length > limit:
@@ -241,7 +245,7 @@ def create_app(
         with db.sessions() as session:
             workers = list(session.scalars(select(WorkerHeartbeat)))
         return {
-            "stage": "M2",
+            "stage": "M3-in-progress",
             "schema_revision": db.require_current(),
             "database": db.engine.dialect.name,
             "environment": settings.environment,
@@ -257,7 +261,10 @@ def create_app(
             "capabilities": {
                 "credentials": True,
                 "work_assets": True,
-                "task_execution": False,
+                "task_execution": True,
+                "external_execution": False,
+                "local_task_execution": True,
+                "paid_execution": False,
                 "legacy_import": "read_only_cli",
                 "asset_projections": True,
                 "finalization": False,
