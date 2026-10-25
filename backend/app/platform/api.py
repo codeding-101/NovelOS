@@ -293,6 +293,8 @@ def create_app(
                 "external_execution": True,
                 "agent_gateway": "offline_v1",
                 "provider_api_execution": False,
+                "model_api_configuration": True,
+                "model_protocol_testing": settings.environment == "test",
                 "local_task_execution": True,
                 "paid_execution": False,
                 "work_budgets": True,

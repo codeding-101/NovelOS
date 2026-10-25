@@ -5,6 +5,12 @@ import shell from "../platform.module.css";
 import styles from "../budgets/budgets.module.css";
 
 type Executor = {
+  api_config: {
+    endpoint: string;
+    model: string;
+    max_output_tokens: number;
+    timeout_seconds: number;
+  } | null;
   agent_protocol: string | null;
   id: string;
   mode: string;
@@ -22,6 +28,11 @@ type Executor = {
   adapter_ready: boolean;
 };
 type Form = {
+  apiProfile: boolean;
+  endpoint: string;
+  model: string;
+  maxOutput: number;
+  timeout: number;
   agentProtocol: boolean;
   name: string;
   mode: string;
@@ -69,6 +80,7 @@ const reasons: Record<string, string> = {
   CAPABILITY_MISMATCH: "不支持任务类型",
   DIAGNOSTIC_OPT_IN_REQUIRED: "未允许自动使用本地诊断",
   ADAPTER_NOT_READY: "外部适配器尚未开放",
+  MODEL_API_DISABLED: "真实模型调用未开放，当前只允许测试环境的本机模拟服务",
   CREDENTIAL_MISSING: "缺少匹配类型的凭证",
   CONTEXT_LIMIT_UNKNOWN: "尚未声明上下文上限",
   CONTEXT_EXCEEDED: "输入与最大输出超过上下文上限",
@@ -80,6 +92,11 @@ const reasons: Record<string, string> = {
   TOKEN_LIMIT: "token 额度不足",
 };
 const empty: Form = {
+  apiProfile: false,
+  endpoint: "",
+  model: "",
+  maxOutput: 2048,
+  timeout: 30,
   agentProtocol: false,
   name: "",
   mode: "api",
@@ -108,6 +125,11 @@ function units(value: string) {
 }
 function fromExecutor(item: Executor): Form {
   return {
+    apiProfile: !!item.api_config,
+    endpoint: item.api_config?.endpoint || "",
+    model: item.api_config?.model || "",
+    maxOutput: item.api_config?.max_output_tokens || 2048,
+    timeout: item.api_config?.timeout_seconds || 30,
     agentProtocol: item.agent_protocol === "offline_v1",
     name: item.name,
     mode: item.mode,
@@ -226,6 +248,15 @@ export default function ExecutorsPage() {
     await run(async () => {
       const hasPrice = !!(form.inputPrice || form.outputPrice);
       const values = {
+        api_config:
+          form.mode === "api" && form.apiProfile
+            ? {
+                endpoint: form.endpoint,
+                model: form.model,
+                max_output_tokens: form.maxOutput,
+                timeout_seconds: form.timeout,
+              }
+            : null,
         agent_protocol:
           form.mode === "agent" && form.agentProtocol ? "offline_v1" : null,
         name: form.name,
@@ -276,7 +307,9 @@ export default function ExecutorsPage() {
       edit(items.find((item) => item.id === id) || null);
       setRoute(null);
       requestKey.current = { signature: "", key: "" };
-      setNotice("执行者配置已保存。外部登记不会启用网络调用。");
+      setNotice(
+        "执行者配置已保存。真实模型调用仍关闭，测试环境仅允许本机模拟服务。",
+      );
     });
   }
   async function savePolicy(event: FormEvent) {
@@ -416,6 +449,7 @@ export default function ExecutorsPage() {
                 field("mode", event.target.value);
                 field("credential", "");
                 field("agentProtocol", false);
+                field("apiProfile", false);
               }}
             >
               <option value="api">模型 API（登记）</option>
@@ -498,6 +532,82 @@ export default function ExecutorsPage() {
             />
             启用离线 Agent 协议（只接收零外部用量，每任务单独授权）
           </label>
+        )}
+        {form.mode === "api" && (
+          <>
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                checked={form.apiProfile}
+                disabled={busy}
+                onChange={(event) => field("apiProfile", event.target.checked)}
+              />
+              登记 Chat Completions 配置（当前仅本机测试可运行）
+            </label>
+            {form.apiProfile && (
+              <>
+                <p>
+                  保存地址不会发起真实调用。模型协议测试只在隔离测试环境执行，按声明的上下文额度和价格预留模拟预算；不是供应商账单。
+                </p>
+                <div className={styles.fields}>
+                  <label>
+                    模型接口完整地址
+                    <input
+                      type="url"
+                      required
+                      maxLength={512}
+                      disabled={busy}
+                      value={form.endpoint}
+                      onChange={(event) =>
+                        field("endpoint", event.target.value)
+                      }
+                      placeholder="https://provider.example/v1/chat/completions"
+                    />
+                  </label>
+                  <label>
+                    模型标识
+                    <input
+                      required
+                      maxLength={128}
+                      disabled={busy}
+                      value={form.model}
+                      onChange={(event) => field("model", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    最大输出 token
+                    <input
+                      type="number"
+                      min={1}
+                      max={32768}
+                      step={1}
+                      required
+                      disabled={busy}
+                      value={form.maxOutput}
+                      onChange={(event) =>
+                        field("maxOutput", Number(event.target.value))
+                      }
+                    />
+                  </label>
+                  <label>
+                    请求超时秒数
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      step={1}
+                      required
+                      disabled={busy}
+                      value={form.timeout}
+                      onChange={(event) =>
+                        field("timeout", Number(event.target.value))
+                      }
+                    />
+                  </label>
+                </div>
+              </>
+            )}
+          </>
         )}
         {!builtin && !form.agentProtocol && (
           <>

@@ -31,7 +31,11 @@ class PlatformDatabase:
             if url.database == ":memory:":
                 kwargs["poolclass"] = StaticPool
         self.engine = create_engine(url, **kwargs)
-        self.sessions = sessionmaker(self.engine, expire_on_commit=False)
+        self.sessions = sessionmaker(
+            self.engine,
+            expire_on_commit=False,
+            info={"model_api_test": settings.environment == "test"},
+        )
         if self.engine.dialect.name == "sqlite":
 
             @event.listens_for(self.engine, "connect")

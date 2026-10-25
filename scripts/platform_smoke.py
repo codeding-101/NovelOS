@@ -17,6 +17,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from model_fixture import model_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -116,9 +117,12 @@ def main() -> None:
 
     output = ROOT / "data" / "validation"
     output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix="platform-smoke-", dir=output, ignore_cleanup_errors=True
-    ) as temp:
+    with (
+        model_fixture() as model,
+        tempfile.TemporaryDirectory(
+            prefix="platform-smoke-", dir=output, ignore_cleanup_errors=True
+        ) as temp,
+    ):
         folder = Path(temp)
         api_port, web_port = free_port(), free_port()
         origin = f"http://127.0.0.1:{web_port}"
@@ -664,6 +668,75 @@ def main() -> None:
                     == "SUCCEEDED"
                 )
                 page.get_by_role("link", name="返回控制台").click()
+                page.get_by_role("link", name="执行者与路由设置", exact=False).click()
+                page.get_by_role("button", name="新增外部执行者", exact=True).click()
+                page.get_by_label("执行者名称", exact=True).fill("模型协议模拟验收")
+                page.get_by_label("登记 Chat Completions 配置", exact=False).check()
+                page.get_by_label("模型接口完整地址", exact=True).fill(model.endpoint)
+                page.get_by_label("模型标识", exact=True).fill("fixture-model")
+                page.get_by_label("最大输出 token", exact=True).fill("128")
+                page.get_by_label("上下文 token 上限", exact=True).fill("8000")
+                page.get_by_label("输入价格（每百万 token）", exact=True).fill("0.25")
+                page.get_by_label("输出价格（每百万 token）", exact=True).fill("0.5")
+                page.get_by_label("凭证引用", exact=True).select_option(
+                    label="浏览器验证凭证"
+                )
+                page.get_by_label("在路由规则中启用", exact=False).check()
+                page.get_by_role("button", name="保存执行者", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("执行者配置已保存")
+                page.reload()
+                page.get_by_role(
+                    "button", name="编辑 模型协议模拟验收", exact=True
+                ).click()
+                expect(page.get_by_label("模型接口完整地址", exact=True)).to_have_value(
+                    model.endpoint
+                )
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("允许 模型协议模拟验收", exact=True).check()
+                page.get_by_role("button", name="保存路由规则", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("作品路由规则已保存")
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(
+                    path=str(output / "model-config-desktop.png"), full_page=True
+                )
+                page.get_by_role("link", name="进入任务中心", exact=True).click()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("输入版本").select_option(label="起风 · v4")
+                page.get_by_label("执行者", exact=True).select_option(
+                    label="模型协议模拟验收"
+                )
+                page.get_by_label("任务目标").fill("本机模拟模型任务")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "候选已接收", timeout=20000
+                )
+                page.get_by_role("button", name="已接收候选", exact=True).click()
+                expect(page.get_by_text("模拟用量已入账", exact=False)).to_contain_text(
+                    "输入 100 token，输出 20 token"
+                )
+                expect(
+                    page.get_by_label("模型协议测试候选（模拟服务）", exact=True)
+                ).to_have_value(model.response["choices"][0]["message"]["content"])
+                assert len(model.calls) == 1
+                expect(
+                    page.get_by_label("输入版本").locator("option:checked")
+                ).to_have_text("起风 · v4")
+                page.screenshot(
+                    path=str(output / "model-task-desktop.png"), full_page=True
+                )
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(
+                    path=str(output / "model-task-mobile.png"), full_page=True
+                )
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
+                page.get_by_role("link", name="查看预算记录", exact=True).click()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                expect(page.get_by_role("region", name="调用账目")).to_contain_text(
+                    "0.000035"
+                )
+                page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
                     path=str(output / "platform-mobile.png"), full_page=True
@@ -712,6 +785,10 @@ def main() -> None:
                             "reference_agent_http_completion_and_duplicate_receipt",
                             "agent_revocation_rejects_saved_result",
                             "agent_mobile_no_horizontal_overflow",
+                            "model_profile_persists_after_reload",
+                            "loopback_model_worker_atomic_candidate_and_usage",
+                            "simulated_usage_visible_in_task_and_budget",
+                            "model_mobile_no_horizontal_overflow",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

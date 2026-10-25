@@ -32,6 +32,7 @@ from app.platform.works import require_asset, require_work
 from app.platform import budget_service
 from app.platform import executor_service
 from app.platform import agent_security
+from app.platform.model_protocol import messages, input_bound
 
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
 LEASE_SECONDS = 60
@@ -51,12 +52,16 @@ def fingerprint(payload):
 
 def event(session, task, action, **details):
     agent_id = details.pop("agent_id", None)
+    provider = details.pop("provider", False)
+    worker = details.pop("worker", False)
     session.add(
         AuditEvent(
             actor="agent:" + agent_id
             if agent_id
+            else "worker:model_api"
+            if provider
             else "worker:local_test"
-            if details.pop("worker", False)
+            if worker
             else "owner",
             action="task." + action,
             target_id=task.id,
@@ -121,14 +126,21 @@ def create_task(db, body: TaskInput):
                 or (
                     executor.mode not in {"human", "local_test"}
                     and not executor_service.offline_agent(executor)
+                    and not executor_service.model_api(executor)
                 )
                 or body.task_type not in executor.capabilities
             ):
-                raise HTTPException(
-                    422, "所选执行者不支持该任务；只允许内置或离线 Agent，模型 API 尚未开放"
+                raise HTTPException(422, "所选执行者不支持该任务，或尚未配置适配器")
+            revision = session.get(AssetRevision, body.input_revision_id)
+            if revision is None:
+                raise HTTPException(404, "输入版本不存在")
+            bound = input_bound(
+                messages(
+                    body.task_type, body.objective, revision.title, revision.content
                 )
+            )
             selected, routing = executor_service.select_for_task(
-                session, body.work_id, body.task_type, body.executor_id
+                session, body.work_id, body.task_type, body.executor_id, bound
             )
             revision = session.get(AssetRevision, body.input_revision_id)
             if revision is None:
@@ -244,7 +256,7 @@ def task_envelope(session, task, attempt, token):
     }
 
 
-def try_claim(db, task_id, executor_id, agent=None):
+def try_claim(db, task_id, executor_id, agent=None, *, provider=False):
     with db.sessions.begin() as session:
         task = locked_task(session, task_id)
         if agent is not None:
@@ -277,6 +289,8 @@ def try_claim(db, task_id, executor_id, agent=None):
                 return task_envelope(session, task, previous, token)
         elif session.get(Executor, task.executor_id).mode == "agent":
             raise HTTPException(403, "外部 Agent 需要任务专属授权")
+        elif session.get(Executor, task.executor_id).mode == "api" and not provider:
+            raise HTTPException(403, "模型 API 任务只由 Worker 领取")
         if (
             task.executor_id != executor_id
             or task.state not in {"QUEUED", "RETRY_WAIT"}
@@ -336,6 +350,7 @@ def try_claim(db, task_id, executor_id, agent=None):
             attempt_id=attempt.id,
             worker=executor_id == "local_test",
             agent_id=agent["id"] if agent else None,
+            provider=provider,
         )
         return task_envelope(session, task, attempt, token)
 
@@ -440,93 +455,116 @@ def receipt(item):
 
 
 def submit(db, task_id, body: ResultEnvelope, agent=None):
-    data = body.model_dump(mode="json", exclude={"lease_token"})
-    signature = fingerprint(data)
     with db.sessions.begin() as session:
         task = locked_task(session, task_id)
+        return submit_in_session(session, task, body, agent)
+
+
+def submit_in_session(session, task, body, agent=None, *, provider_reservation=None):
+    data = body.model_dump(mode="json", exclude={"lease_token"})
+    signature = fingerprint(data)
+    if provider_reservation is None:
+        if body.usage.accounting != "not_applicable":
+            raise HTTPException(422, "只有模型适配器可提交已结算用量")
         agent_security.authorize(session, task, agent)
-        attempt = attempt_for(session, task, body, agent)
-        if body.task_id != task.id or body.executor_id != task.executor_id:
-            raise HTTPException(422, "结果与任务或执行者不匹配")
-        previous = session.scalar(
-            select(TaskSubmission).where(
-                TaskSubmission.attempt_id == attempt.id,
-                TaskSubmission.submission_key == body.submission_id,
+    else:
+        item = provider_reservation
+        if (
+            item.task_id != task.id
+            or item.attempt_id != body.attempt_id
+            or item.state != "SETTLED"
+            or body.usage.accounting != "settled"
+            or (
+                body.usage.input_tokens,
+                body.usage.output_tokens,
+                body.usage.cost_microunits,
             )
-        )
-        if previous is not None:
-            if previous.fingerprint != signature:
-                raise HTTPException(409, "同一结果标识不能提交不同内容")
-            return receipt(previous)
-        count = session.scalar(
-            select(func.count())
-            .select_from(TaskSubmission)
-            .where(TaskSubmission.attempt_id == attempt.id)
-        )
-        if count >= 16:
-            raise HTTPException(429, "本次执行的结果回执已达到 16 份上限")
-        disposition, reason = "ACCEPTED", None
-        if not active(task, attempt):
-            disposition, reason = "QUARANTINED", "ATTEMPT_INACTIVE"
-        elif not current_input(session, task):
-            disposition, reason = "QUARANTINED", "INPUT_STALE"
-            transition(task, "FAILED", reason)
-            attempt.state = "FAILED"
-        elif set(body.evidence_revision_ids) - {task.input_revision_id} or any(
-            item.kind != task.task_type for item in body.output_artifacts
+            != (item.input_tokens, item.output_tokens, item.actual_microunits)
         ):
-            disposition, reason = "QUARANTINED", "OUTPUT_SCOPE_INVALID"
-            transition(task, "FAILED", reason)
-            attempt.state = "FAILED"
-        elif body.result_status == "failed":
-            disposition, reason = "FAILED", body.error_code or "INVALID_OUTPUT"
-            retry = (
-                reason in {"TEMPORARY_ERROR", "LOCAL_EXECUTION_FAILED"}
-                and task.executor_id == "local_test"
-                and task.attempt_count < task.max_attempts
-            )
-            transition(task, "RETRY_WAIT" if retry else "FAILED", reason)
-            task.available_at = now() + timedelta(seconds=2**task.attempt_count)
-            attempt.state = "FAILED"
-        elif (
-            body.result_status != "success"
-            or body.finish_reason != "complete"
-            or not body.output_artifacts
-            or body.evidence_revision_ids != [task.input_revision_id]
-            or any(
-                not item.content.strip() or not item.title.strip()
-                for item in body.output_artifacts
-            )
-            or body.error_code
-        ):
-            disposition, reason = "PARTIAL", "OUTPUT_INCOMPLETE"
-            transition(task, "PAUSED", reason)
-            attempt.state = "PARTIAL"
-        else:
-            transition(task, "SUCCEEDED")
-            attempt.state = "SUCCEEDED"
-        item = TaskSubmission(
-            task_id=task.id,
-            attempt_id=attempt.id,
-            submission_key=body.submission_id,
-            fingerprint=signature,
-            disposition=disposition,
-            reason=reason,
-            envelope=data,
+            raise HTTPException(409, "模型结果必须匹配已结算调用")
+    attempt = attempt_for(session, task, body, agent)
+    if body.task_id != task.id or body.executor_id != task.executor_id:
+        raise HTTPException(422, "结果与任务或执行者不匹配")
+    previous = session.scalar(
+        select(TaskSubmission).where(
+            TaskSubmission.attempt_id == attempt.id,
+            TaskSubmission.submission_key == body.submission_id,
         )
-        session.add(item)
-        session.flush()
-        event(
-            session,
-            task,
-            "result_received",
-            submission_id=item.id,
-            disposition=disposition,
-            reason=reason,
-            worker=task.executor_id == "local_test",
-            agent_id=agent["id"] if agent else None,
+    )
+    if previous is not None:
+        if previous.fingerprint != signature:
+            raise HTTPException(409, "同一结果标识不能提交不同内容")
+        return receipt(previous)
+    count = session.scalar(
+        select(func.count())
+        .select_from(TaskSubmission)
+        .where(TaskSubmission.attempt_id == attempt.id)
+    )
+    if count >= 16:
+        raise HTTPException(429, "本次执行的结果回执已达到 16 份上限")
+    disposition, reason = "ACCEPTED", None
+    if not active(task, attempt):
+        disposition, reason = "QUARANTINED", "ATTEMPT_INACTIVE"
+    elif not current_input(session, task):
+        disposition, reason = "QUARANTINED", "INPUT_STALE"
+        transition(task, "FAILED", reason)
+        attempt.state = "FAILED"
+    elif set(body.evidence_revision_ids) - {task.input_revision_id} or any(
+        item.kind != task.task_type for item in body.output_artifacts
+    ):
+        disposition, reason = "QUARANTINED", "OUTPUT_SCOPE_INVALID"
+        transition(task, "FAILED", reason)
+        attempt.state = "FAILED"
+    elif body.result_status == "failed":
+        disposition, reason = "FAILED", body.error_code or "INVALID_OUTPUT"
+        retry = (
+            reason in {"TEMPORARY_ERROR", "LOCAL_EXECUTION_FAILED"}
+            and task.executor_id == "local_test"
+            and task.attempt_count < task.max_attempts
         )
-        return receipt(item)
+        transition(task, "RETRY_WAIT" if retry else "FAILED", reason)
+        task.available_at = now() + timedelta(seconds=2**task.attempt_count)
+        attempt.state = "FAILED"
+    elif (
+        body.result_status != "success"
+        or body.finish_reason != "complete"
+        or not body.output_artifacts
+        or body.evidence_revision_ids != [task.input_revision_id]
+        or any(
+            not item.content.strip() or not item.title.strip()
+            for item in body.output_artifacts
+        )
+        or body.error_code
+    ):
+        disposition, reason = "PARTIAL", "OUTPUT_INCOMPLETE"
+        transition(task, "PAUSED", reason)
+        attempt.state = "PARTIAL"
+    else:
+        transition(task, "SUCCEEDED")
+        attempt.state = "SUCCEEDED"
+    item = TaskSubmission(
+        task_id=task.id,
+        attempt_id=attempt.id,
+        submission_key=body.submission_id,
+        fingerprint=signature,
+        disposition=disposition,
+        reason=reason,
+        envelope=data,
+    )
+    session.add(item)
+    session.flush()
+    event(
+        session,
+        task,
+        "result_received",
+        submission_id=item.id,
+        disposition=disposition,
+        reason=reason,
+        worker=task.executor_id == "local_test",
+        agent_id=agent["id"] if agent else None,
+        provider=provider_reservation is not None,
+    )
+    return receipt(item)
 
 
 def control(db, task_id, action, expected_version):

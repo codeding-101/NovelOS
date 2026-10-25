@@ -75,6 +75,7 @@ type Submission = {
   disposition: string;
   reason: string | null;
   envelope: {
+    usage?: { accounting: string; input_tokens: number; output_tokens: number };
     output_artifacts: { kind: string; title: string; content: string }[];
     warnings: string[];
   };
@@ -115,6 +116,8 @@ const reasons: Record<string, string> = {
   BUDGET_UNCERTAIN: "调用费用尚不明确，请在预算中心核对后恢复",
   EXECUTOR_BLOCKED: "执行者或作品规则已变化，请在执行者设置中核对后恢复",
   AGENT_REVOKED: "Agent 授权已撤销；重新授权后可恢复排队",
+  MODEL_PREFLIGHT_FAILED:
+    "模型协议检查未通过，未发送请求；请核对配置、凭证和预算",
 };
 
 async function allPages<T>(path: string) {
@@ -806,8 +809,8 @@ export default function TasksPage() {
                       </pre>
                     </section>
                   )}
-                  {executors.find((e) => e.id === detail.executor_id)
-                    ?.mode === "agent" && (
+                  {executors.find((e) => e.id === detail.executor_id)?.mode ===
+                    "agent" && (
                     <AgentGrants
                       key={detail.id}
                       task={detail}
@@ -853,6 +856,14 @@ export default function TasksPage() {
                   {candidate && (
                     <section className={styles.manual}>
                       <h3>{dispositions[candidate.disposition]}</h3>
+                      {candidate.envelope.usage?.accounting === "settled" && (
+                        <p>
+                          模拟用量已入账：输入{" "}
+                          {candidate.envelope.usage.input_tokens} token，输出{" "}
+                          {candidate.envelope.usage.output_tokens} token。
+                          <a href="/budgets">查看预算记录</a>
+                        </p>
+                      )}
                       {candidate.envelope.output_artifacts.map(
                         (artifact, index) => (
                           <div key={index}>

@@ -1,4 +1,4 @@
-"""Local routing and external declaration preflight; no network or live adapters."""
+"""Local routing, model declarations and loopback protocol rehearsal; public calls stay closed."""
 
 import hashlib
 import json
@@ -18,6 +18,7 @@ from app.platform import budget_service
 
 LOCAL_MODES = {"human", "local_test"}
 FIELDS = (
+    "api_config",
     "agent_protocol",
     "name",
     "capabilities",
@@ -56,13 +57,15 @@ def lock_executor(session, executor_id):
     return session.get(Executor, executor_id, populate_existing=True)
 
 
-def data(item):
+def data(item, *, test_mode=False):
     return {
         "id": item.id,
         "mode": item.mode,
         "version": item.version,
         **{key: getattr(item, key) for key in FIELDS},
-        "adapter_ready": item.mode in LOCAL_MODES or offline_agent(item),
+        "adapter_ready": item.mode in LOCAL_MODES
+        or offline_agent(item)
+        or model_test_allowed(item, test_mode),
         "external_calls": False,
         "paid_calls": False,
     }
@@ -80,6 +83,18 @@ def audit(session, action, target, details):
 
 
 def validate_settings(session, mode, body):
+    if body.api_config is not None:
+        if mode != "api" or body.agent_protocol:
+            raise HTTPException(422, "模型 API 配置只适用于 API 执行者")
+        if (
+            body.context_tokens is None
+            or body.context_tokens <= body.api_config.max_output_tokens
+            or not body.currency
+            or not body.credential_id
+        ):
+            raise HTTPException(
+                422, "模型调用需要凭证、完整价格和大于输出上限的上下文额度"
+            )
     if body.agent_protocol and mode != "agent":
         raise HTTPException(422, "离线 Agent 协议仅适用于 Agent 执行者")
     if body.agent_protocol and (body.currency or body.credential_id):
@@ -100,7 +115,11 @@ def register(db, body):
     signature = hashlib.sha256(
         json.dumps(
             body.model_dump(
-                exclude={"agent_protocol"} if body.agent_protocol is None else set()
+                exclude={
+                    key
+                    for key in ("agent_protocol", "api_config")
+                    if getattr(body, key) is None
+                }
             ),
             sort_keys=True,
         ).encode()
@@ -209,6 +228,21 @@ def offline_agent(item):
     return item.mode == "agent" and item.agent_protocol == "offline_v1"
 
 
+def model_api(item):
+    return item.mode == "api" and item.api_config is not None
+
+
+def model_test_allowed(item, test_mode):
+    from urllib.parse import urlsplit
+
+    return bool(
+        test_mode
+        and model_api(item)
+        and urlsplit(item.api_config["endpoint"]).scheme == "http"
+        and urlsplit(item.api_config["endpoint"]).hostname in {"127.0.0.1", "::1"}
+    )
+
+
 def evaluate(
     session, work_id, task_type, input_tokens=0, max_output_tokens=1, *, automatic=True
 ):
@@ -251,7 +285,18 @@ def evaluate(
         if item.mode in LOCAL_MODES or offline_agent(item):
             cost = 0
         else:
-            reasons.append("ADAPTER_NOT_READY")
+            planned_input, planned_output = input_tokens, max_output_tokens
+            if model_api(item):
+                if not model_test_allowed(
+                    item, session.info.get("model_api_test", False)
+                ):
+                    reasons.append("MODEL_API_DISABLED")
+                planned_output = item.api_config["max_output_tokens"]
+                planned_input = max(0, (item.context_tokens or 0) - planned_output)
+                if input_tokens > planned_input:
+                    reasons.append("CONTEXT_EXCEEDED")
+            else:
+                reasons.append("ADAPTER_NOT_READY")
             credential = (
                 session.get(ProviderCredential, item.credential_id)
                 if item.credential_id
@@ -263,7 +308,7 @@ def evaluate(
                 reasons.append("CREDENTIAL_MISSING")
             if item.context_tokens is None:
                 reasons.append("CONTEXT_LIMIT_UNKNOWN")
-            elif input_tokens + max_output_tokens > item.context_tokens:
+            elif planned_input + planned_output > item.context_tokens:
                 reasons.append("CONTEXT_EXCEEDED")
             if (
                 item.currency is None
@@ -272,8 +317,8 @@ def evaluate(
             ):
                 reasons.append("PRICE_UNKNOWN")
             else:
-                cost = (input_tokens * item.input_rate + 999999) // 1000000 + (
-                    max_output_tokens * item.output_rate + 999999
+                cost = (planned_input * item.input_rate + 999999) // 1000000 + (
+                    planned_output * item.output_rate + 999999
                 ) // 1000000
             if budget is None:
                 reasons.append("BUDGET_MISSING")
@@ -291,8 +336,8 @@ def evaluate(
                 if (
                     budget.spent_tokens
                     + budget.held_tokens
-                    + input_tokens
-                    + max_output_tokens
+                    + planned_input
+                    + planned_output
                     > budget.limit_tokens
                 ):
                     reasons.append("TOKEN_LIMIT")
@@ -303,6 +348,8 @@ def evaluate(
                 "mode": item.mode,
                 "executor_version": item.version,
                 "agent_protocol": item.agent_protocol,
+                "api_config": item.api_config,
+                "credential_id": item.credential_id,
                 "enabled": item.enabled,
                 "available": item.available,
                 "priority": item.priority,
@@ -316,7 +363,7 @@ def evaluate(
                 "currency": item.currency,
                 "estimated_tokens": 0
                 if item.mode in LOCAL_MODES or offline_agent(item)
-                else input_tokens + max_output_tokens,
+                else planned_input + planned_output,
             }
         )
     selected = next((item["id"] for item in candidates if item["eligible"]), None)
@@ -334,9 +381,11 @@ def evaluate(
     }
 
 
-def select_for_task(session, work_id, task_type, requested):
+def select_for_task(session, work_id, task_type, requested, input_tokens=0):
     lock_work(session, work_id)
-    decision = evaluate(session, work_id, task_type, automatic=requested == "auto")
+    decision = evaluate(
+        session, work_id, task_type, input_tokens, automatic=requested == "auto"
+    )
     selected = decision["selected_id"] if requested == "auto" else requested
     if selected is None:
         raise HTTPException(
@@ -344,7 +393,9 @@ def select_for_task(session, work_id, task_type, requested):
         )
     lock_executor(session, selected)
     # Recheck after the lock: disabling an executor must not admit new work.
-    decision = evaluate(session, work_id, task_type, automatic=requested == "auto")
+    decision = evaluate(
+        session, work_id, task_type, input_tokens, automatic=requested == "auto"
+    )
     candidate = next(
         (row for row in decision["candidates"] if row["id"] == selected), None
     )
@@ -360,10 +411,32 @@ def ready_for_claim(session, task):
     lock_work(session, task.work_id)
     lock_executor(session, task.executor_id)
     original = session.get(TaskRoutingDecision, task.id)
+    executor = session.get(Executor, task.executor_id)
+    if model_api(executor):
+        if original is None:
+            return False
+        selected = next(
+            row
+            for row in original.snapshot["candidates"]
+            if row["id"] == task.executor_id
+        )
+        if any(
+            selected.get(key) != getattr(executor, key)
+            for key in (
+                "api_config",
+                "credential_id",
+                "currency",
+                "input_rate",
+                "output_rate",
+                "context_tokens",
+            )
+        ):
+            return False
     decision = evaluate(
         session,
         task.work_id,
         task.task_type,
+        original.snapshot["input_tokens"] if original else 0,
         automatic=original is not None and original.requested_executor_id == "auto",
     )
     candidate = next(

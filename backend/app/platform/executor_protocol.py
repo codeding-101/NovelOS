@@ -1,9 +1,11 @@
 from typing import Literal
 from pydantic import Field, field_validator, model_validator
 from app.platform.task_protocol import Contract, TaskType
+from app.platform.model_protocol import ModelConfig
 
 
 class ExecutorSettings(Contract):
+    api_config: ModelConfig | None = None
     agent_protocol: Literal["offline_v1"] | None = None
     name: str = Field(min_length=1, max_length=128)
     capabilities: list[TaskType] = Field(min_length=1, max_length=5)

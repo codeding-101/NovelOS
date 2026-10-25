@@ -32,8 +32,8 @@ def authenticate_agent(session, header):
 def authorize(session, task, principal):
     if principal is None:
         executor = session.get(Executor, task.executor_id)
-        if executor.mode == "agent":
-            raise HTTPException(403, "Agent 回报必须使用任务专属接口和令牌")
+        if executor.mode in {"agent", "api"}:
+            raise HTTPException(403, "外部执行回报必须使用专属入口，不能使用用户会话代报")
         return
     session.execute(
         update(AgentCredential)

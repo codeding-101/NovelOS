@@ -65,7 +65,7 @@ def test_budget_upgrade_preserves_existing_task(platform_database):
         session.flush()
         task_id = task.id
     db.upgrade()
-    assert db.require_current() == "0007_agent_gateway"
+    assert db.require_current() == "0008_model_api"
     with db.sessions() as session:
         task = session.get(CreativeTask, task_id)
         assert (
@@ -98,7 +98,7 @@ def setup(db, money=100, tokens=100, body=None):
         ),
     )
     task_id = add_task(db, body)
-    return body, task_id, tasks.try_claim(db, task_id, "test_api")
+    return body, task_id, tasks.try_claim(db, task_id, "test_api", provider=True)
 
 
 def add_task(db, body):
@@ -216,7 +216,7 @@ def test_concurrent_reservations_cannot_overspend_shared_work(platform):
     _, db = platform
     body, task_id, envelope = setup(db)
     second = add_task(db, body.model_copy(update={"request_key": "second"}))
-    second_envelope = tasks.try_claim(db, second, "test_api")
+    second_envelope = tasks.try_claim(db, second, "test_api", provider=True)
     barrier = Barrier(2)
 
     def claim(pair):
@@ -315,7 +315,7 @@ def test_cancel_releases_only_unsent_and_reconciliation_does_not_resume(platform
         item_version = item.version
         assert session.get(WorkBudget, body.work_id).held_microunits == 80
     second = add_task(db, body.model_copy(update={"request_key": "second"}))
-    second_envelope = tasks.try_claim(db, second, "test_api")
+    second_envelope = tasks.try_claim(db, second, "test_api", provider=True)
     with pytest.raises(HTTPException):
         reserve(db, second, second_envelope)
     with pytest.raises(HTTPException):
@@ -388,7 +388,7 @@ def test_expiry_preserves_unknown_and_overrun_blocks_future_calls(platform):
             select(BudgetEvent).where(BudgetEvent.kind == "SETTLED")
         ).details["over_reservation"]
     tasks.control(db, task_id, "resume", version)
-    next_attempt = tasks.try_claim(db, task_id, "test_api")
+    next_attempt = tasks.try_claim(db, task_id, "test_api", provider=True)
     with pytest.raises(HTTPException):
         reserve(db, task_id, next_attempt)
     with db.sessions() as session:

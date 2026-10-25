@@ -1,4 +1,4 @@
-"""Task/result contracts for manual, local and offline Agent execution; paid calls stay closed."""
+"""Task/result contracts; settled usage is accepted only from the internal model test adapter."""
 
 from __future__ import annotations
 
@@ -77,14 +77,16 @@ class OutputArtifact(Contract):
 
 
 class Usage(Contract):
-    input_tokens: int = Field(default=0, ge=0)
-    output_tokens: int = Field(default=0, ge=0)
-    cost_microunits: int = Field(default=0, ge=0)
-    accounting: Literal["not_applicable"] = "not_applicable"
+    input_tokens: int = Field(default=0, strict=True, ge=0, le=10**12)
+    output_tokens: int = Field(default=0, strict=True, ge=0, le=10**12)
+    cost_microunits: int = Field(default=0, strict=True, ge=0, le=10**12)
+    accounting: Literal["not_applicable", "settled"] = "not_applicable"
 
     @model_validator(mode="after")
     def local_only(self):
-        if self.input_tokens or self.output_tokens or self.cost_microunits:
+        if self.accounting == "not_applicable" and (
+            self.input_tokens or self.output_tokens or self.cost_microunits
+        ):
             raise ValueError(
                 "Paid execution and external usage accounting are not enabled"
             )

@@ -1,4 +1,4 @@
-"""Process asset projections, recover expired tasks, and run local diagnostic tasks."""
+"""Recover tasks, process assets, and execute local tasks plus test-only model fixtures."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from app.platform.database import PlatformDatabase
 from app.platform.models import WorkerHeartbeat, now
 from app.platform.projections import LocalFileStore, process_batch
 from app.platform.task_service import run_local
+from app.platform.model_runtime import run_model
 
 
 def heartbeat(db: PlatformDatabase, worker_id: str, state: str = "idle") -> None:
@@ -47,6 +48,7 @@ def main() -> None:
                     lambda: process_batch(db, LocalFileStore(settings.storage_root)),
                 ),
                 ("tasks", lambda: int(run_local(db))),
+                ("model_fixtures", lambda: int(run_model(db, settings))),
             ):
                 try:
                     processed += operation()

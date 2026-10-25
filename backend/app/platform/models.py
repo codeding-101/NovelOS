@@ -259,6 +259,7 @@ class Executor(PlatformBase):
     registration_key: Mapped[str | None] = mapped_column(String(128), unique=True)
     registration_hash: Mapped[str | None] = mapped_column(String(64))
     agent_protocol: Mapped[str | None] = mapped_column(String(32))
+    api_config: Mapped[dict | None] = mapped_column(JSON)
 
 
 class ExecutionPolicy(PlatformBase):

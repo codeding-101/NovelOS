@@ -30,9 +30,9 @@ jobs:
         working-directory: backend
         env:
           NOVELOS_TEST_POSTGRES_URL: postgresql+psycopg://novelos:disposable-ci-password@localhost:5432/novelos_test
-        run: python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py -v
+        run: python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py tests/test_platform_models.py -v
       - name: Platform static checks
-        run: python -m ruff check backend/app/platform backend/platform_migrations backend/tests/test_platform_foundation.py backend/tests/test_platform_works.py backend/tests/test_platform_delivery.py backend/tests/test_platform_tasks.py backend/tests/test_platform_budgets.py backend/tests/test_platform_executors.py backend/tests/test_platform_agents.py backend/tests/platform_fixtures.py scripts/baseline_snapshot.py scripts/platform_smoke.py scripts/legacy_import_rehearsal.py scripts/offline_agent_client.py --select F,E9
+        run: python -m ruff check backend/app/platform backend/platform_migrations backend/tests/test_platform_foundation.py backend/tests/test_platform_works.py backend/tests/test_platform_delivery.py backend/tests/test_platform_tasks.py backend/tests/test_platform_budgets.py backend/tests/test_platform_executors.py backend/tests/test_platform_agents.py backend/tests/test_platform_models.py backend/tests/platform_fixtures.py scripts/baseline_snapshot.py scripts/platform_smoke.py scripts/legacy_import_rehearsal.py scripts/offline_agent_client.py scripts/model_fixture.py --select F,E9
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
