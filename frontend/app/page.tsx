@@ -246,10 +246,10 @@ export default function Page() {
             </section>
             <section className={styles.card}>
               <h2>创作执行</h2>
-              <strong>人工与本地校验</strong>
+              <strong>人工、本地校验与离线 Agent</strong>
               <p>
-                已开放任务排队、检查点和候选结果。真实模型 API、外部 Agent
-                与费用控制仍在开发中。
+                已开放任务授权、检查点、候选结果和预算基础。真实模型 API
+                与供应商计费接入仍在开发中。
               </p>
             </section>
             <section className={styles.card}>

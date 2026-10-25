@@ -1,4 +1,4 @@
-"""Versioned task/result contracts. External execution is not enabled in this revision."""
+"""Task/result contracts for manual, local and offline Agent execution; paid calls stay closed."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class Contract(BaseModel):
 class TaskInput(Contract):
     protocol_version: Literal["1.0"] = "1.0"
     work_id: str = Field(min_length=1, max_length=32)
-    executor_id: Literal["human", "local_test", "auto"]
+    executor_id: str = Field(min_length=1, max_length=32)
     input_revision_id: str = Field(min_length=1, max_length=32)
     task_type: TaskType
     objective: str = Field(min_length=1, max_length=4000)
@@ -94,7 +94,7 @@ class Usage(Contract):
 class ResultEnvelope(LeaseInput):
     protocol_version: Literal["1.0"] = "1.0"
     task_id: str = Field(min_length=1, max_length=32)
-    executor_id: Literal["human", "local_test"]
+    executor_id: str = Field(min_length=1, max_length=32)
     submission_id: str = Field(min_length=1, max_length=128)
     result_status: Literal["success", "partial", "failed"]
     finish_reason: Literal["complete", "truncated", "error"]
@@ -148,7 +148,7 @@ class TaskEnvelope(Contract):
     task_id: str
     work_id: str
     attempt_id: str
-    executor_id: Literal["human", "local_test"]
+    executor_id: str
     task_type: TaskType
     objective: str
     lease_token: str = Field(repr=False)

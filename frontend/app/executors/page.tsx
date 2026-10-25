@@ -5,6 +5,7 @@ import shell from "../platform.module.css";
 import styles from "../budgets/budgets.module.css";
 
 type Executor = {
+  agent_protocol: string | null;
   id: string;
   mode: string;
   version: number;
@@ -21,6 +22,7 @@ type Executor = {
   adapter_ready: boolean;
 };
 type Form = {
+  agentProtocol: boolean;
   name: string;
   mode: string;
   capabilities: string[];
@@ -43,6 +45,7 @@ type Route = {
   selected_id: string | null;
   policy_version: number;
   candidates: {
+    agent_protocol: string | null;
     id: string;
     name: string;
     mode: string;
@@ -77,6 +80,7 @@ const reasons: Record<string, string> = {
   TOKEN_LIMIT: "token 额度不足",
 };
 const empty: Form = {
+  agentProtocol: false,
   name: "",
   mode: "api",
   capabilities: ["analyze"],
@@ -104,6 +108,7 @@ function units(value: string) {
 }
 function fromExecutor(item: Executor): Form {
   return {
+    agentProtocol: item.agent_protocol === "offline_v1",
     name: item.name,
     mode: item.mode,
     capabilities: item.capabilities,
@@ -221,16 +226,28 @@ export default function ExecutorsPage() {
     await run(async () => {
       const hasPrice = !!(form.inputPrice || form.outputPrice);
       const values = {
+        agent_protocol:
+          form.mode === "agent" && form.agentProtocol ? "offline_v1" : null,
         name: form.name,
         capabilities: form.capabilities,
         enabled: form.enabled,
         available: form.available,
         priority: form.priority,
-        currency: builtin || !hasPrice ? null : form.currency,
-        input_rate: builtin || !hasPrice ? null : units(form.inputPrice),
-        output_rate: builtin || !hasPrice ? null : units(form.outputPrice),
+        currency:
+          builtin || form.agentProtocol || !hasPrice ? null : form.currency,
+        input_rate:
+          builtin || form.agentProtocol || !hasPrice
+            ? null
+            : units(form.inputPrice),
+        output_rate:
+          builtin || form.agentProtocol || !hasPrice
+            ? null
+            : units(form.outputPrice),
         context_tokens: builtin || !form.context ? null : Number(form.context),
-        credential_id: builtin || !form.credential ? null : form.credential,
+        credential_id:
+          builtin || form.agentProtocol || !form.credential
+            ? null
+            : form.credential,
       };
       let id = editing?.id;
       if (editing)
@@ -304,8 +321,8 @@ export default function ExecutorsPage() {
       </header>
       <h1>执行者与路由</h1>
       <p>
-        为任务声明能力、可用状态和选择顺序。当前可执行人工与本地校验；API／Agent
-        只登记和检查配置，不发起网络请求。
+        为任务声明能力、可用状态和选择顺序。支持人工、本地校验和离线 Agent；模型
+        API 仍只登记和检查配置。
       </p>
       {error && (
         <p role="alert" className={styles.error}>
@@ -398,6 +415,7 @@ export default function ExecutorsPage() {
               onChange={(event) => {
                 field("mode", event.target.value);
                 field("credential", "");
+                field("agentProtocol", false);
               }}
             >
               <option value="api">模型 API（登记）</option>
@@ -452,7 +470,7 @@ export default function ExecutorsPage() {
             checked={form.enabled}
             onChange={(event) => field("enabled", event.target.checked)}
           />
-          在路由规则中启用（外部适配器仍未开放）
+          在路由规则中启用
         </label>
         <label className={styles.check}>
           <input
@@ -463,7 +481,25 @@ export default function ExecutorsPage() {
           />
           用户标记为可用（不代表已完成连通性检测）
         </label>
-        {!builtin && (
+        {form.mode === "agent" && (
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              checked={form.agentProtocol}
+              disabled={busy}
+              onChange={(event) => {
+                field("agentProtocol", event.target.checked);
+                if (event.target.checked) {
+                  field("credential", "");
+                  field("inputPrice", "");
+                  field("outputPrice", "");
+                }
+              }}
+            />
+            启用离线 Agent 协议（只接收零外部用量，每任务单独授权）
+          </label>
+        )}
+        {!builtin && !form.agentProtocol && (
           <>
             <div className={styles.fields}>
               <label>
@@ -766,7 +802,9 @@ export default function ExecutorsPage() {
                       : "符合当前规则"}
                   </p>
                   <p>
-                    {item.mode === "human" || item.mode === "local_test"
+                    {item.mode === "human" ||
+                    item.mode === "local_test" ||
+                    item.agent_protocol === "offline_v1"
                       ? "不产生模型消费"
                       : item.estimated_microunits === null
                         ? "费用无法估算"

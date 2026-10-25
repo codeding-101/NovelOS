@@ -90,7 +90,7 @@ cd backend
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py tests\test_platform_works.py tests\test_platform_delivery.py tests\test_platform_tasks.py tests\test_platform_budgets.py tests\test_platform_executors.py -v
+.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py tests\test_platform_works.py tests\test_platform_delivery.py tests\test_platform_tasks.py tests\test_platform_budgets.py tests\test_platform_executors.py tests\test_platform_agents.py -v
 ```
 
 默认测试 SQLite；设置 `NOVELOS_TEST_POSTGRES_URL` 后也运行 PostgreSQL 用例。该地址必须指向隔离测试数据库；每个 PostgreSQL 用例创建唯一 schema，结束时只删除自己的 schema。覆盖登录保护、持久限流、CSRF、会话过期和撤销、凭证加密、不泄露校验输入、未知迁移版本、重复初始化和只读旧库盘点。
@@ -108,7 +108,7 @@ Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PA
 
 升级前保留数据库及主密钥备份；版本变更通过 `python -m app.platform.cli upgrade` 或 migrate 服务执行。`python -m app.platform.cli check` 仅检查版本。未知版本和未受管理的非空库会被拒绝，不能用强制 stamp 掩盖不兼容。
 
-当前 schema 版本为 `0006_executor_routing`；本次迁移扩展执行者声明，新增作品规则和不可变路由记录，保留已有任务、预算和正文，不自动启用外部执行。旧任务没有补造选择历史。API 与 Worker 都须升级后再启动。迁移不提供破坏性降级，恢复旧应用版本须使用升级前数据库备份。
+当前 schema 版本为 `0007_agent_gateway`；本次迁移增加离线 Agent 协议字段、尝试授权标识和不可变的任务授权绑定，保留已有任务、执行者、路由、预算和正文。已有 Agent 登记与凭证不会自动获得任务权限。API 与 Worker 都须升级后再启动。迁移不提供破坏性降级，恢复旧应用版本须使用升级前数据库备份。
 
 当前尚无完整生产备份调度和异机恢复工具。M2 的资产与派生副本恢复、M3 首个工作包的本地任务恢复已通过本地验收；生产使用仍需完成部署验证、真实执行者与预算故障恢复、M9 备份恢复验收。M0 旧库快照脚本不能证明 PostgreSQL 全平台灾难恢复已经覆盖。
 
@@ -117,7 +117,8 @@ Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PA
 - 作品空间、后台重建、旧库导入限制和升级说明见 [作品与版本指南](work-assets.md)；本地验收不能代替服务器部署验收。
 - 预算配置和未知费用处理见 [作品预算指南](work-budgets.md)；当前是作品累计额度，未实现供应商月度免费额度、真实价格和用量解析。浏览器预算验收使用标明无真实调用的隔离样例。
 - 执行者声明和作品规则见 [执行者路由指南](executor-routing.md)；可用状态来自用户声明，外部登记不意味着适配器已接通。浏览器验收包含登记、规则刷新持久化、排除原因和实际本地自动任务。
-- 不调用真实模型，不领取 Agent 任务，不自动导入旧作品，不开放定稿。
+- 离线 Agent 可凭任务专属令牌主动领取和回报，接入方式见 [Agent 指南](agent-gateway.md)。浏览器验收包含一次性令牌签发、独立客户端经网站代理完成任务、重交去重和撤销拒绝；客户端不调用模型。
+- 不调用真实模型，不自动导入旧作品，不开放定稿。
 - 凭证支持加密保存、列出元数据和删除；供应商联通性、轮换与任务使用后续实施。
 - 当前登录限流为每个服务端观察到的客户端地址每 15 分钟最多 5 次尝试；成功尝试也计数。服务处在反向代理后，单用户共享限制符合当前使用范围。
 - Docker Compose 容器运行、HTTPS 证书和卷持久化的实测状态以执行记录为准；配置文件存在不等于部署验收已完成。

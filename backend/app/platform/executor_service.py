@@ -18,6 +18,7 @@ from app.platform import budget_service
 
 LOCAL_MODES = {"human", "local_test"}
 FIELDS = (
+    "agent_protocol",
     "name",
     "capabilities",
     "enabled",
@@ -61,7 +62,7 @@ def data(item):
         "mode": item.mode,
         "version": item.version,
         **{key: getattr(item, key) for key in FIELDS},
-        "adapter_ready": item.mode in LOCAL_MODES,
+        "adapter_ready": item.mode in LOCAL_MODES or offline_agent(item),
         "external_calls": False,
         "paid_calls": False,
     }
@@ -79,6 +80,10 @@ def audit(session, action, target, details):
 
 
 def validate_settings(session, mode, body):
+    if body.agent_protocol and mode != "agent":
+        raise HTTPException(422, "离线 Agent 协议仅适用于 Agent 执行者")
+    if body.agent_protocol and (body.currency or body.credential_id):
+        raise HTTPException(422, "离线 Agent 不关联供应商凭证或价格，请清空这些字段")
     if mode in LOCAL_MODES:
         if body.credential_id or body.currency or body.context_tokens:
             raise HTTPException(422, "内置执行者不使用供应商凭证、定价或上下文额度")
@@ -93,7 +98,12 @@ def validate_settings(session, mode, body):
 
 def register(db, body):
     signature = hashlib.sha256(
-        json.dumps(body.model_dump(), sort_keys=True).encode()
+        json.dumps(
+            body.model_dump(
+                exclude={"agent_protocol"} if body.agent_protocol is None else set()
+            ),
+            sort_keys=True,
+        ).encode()
     ).hexdigest()
     with db.sessions.begin() as session:
         session.execute(
@@ -195,6 +205,10 @@ def configure_policy(db, work_id, body):
         return item.version
 
 
+def offline_agent(item):
+    return item.mode == "agent" and item.agent_protocol == "offline_v1"
+
+
 def evaluate(
     session, work_id, task_type, input_tokens=0, max_output_tokens=1, *, automatic=True
 ):
@@ -234,7 +248,7 @@ def evaluate(
             and not rules["auto_local_diagnostics"]
         ):
             reasons.append("DIAGNOSTIC_OPT_IN_REQUIRED")
-        if item.mode in LOCAL_MODES:
+        if item.mode in LOCAL_MODES or offline_agent(item):
             cost = 0
         else:
             reasons.append("ADAPTER_NOT_READY")
@@ -288,6 +302,7 @@ def evaluate(
                 "name": item.name,
                 "mode": item.mode,
                 "executor_version": item.version,
+                "agent_protocol": item.agent_protocol,
                 "enabled": item.enabled,
                 "available": item.available,
                 "priority": item.priority,
@@ -300,7 +315,7 @@ def evaluate(
                 "estimated_microunits": cost,
                 "currency": item.currency,
                 "estimated_tokens": 0
-                if item.mode in LOCAL_MODES
+                if item.mode in LOCAL_MODES or offline_agent(item)
                 else input_tokens + max_output_tokens,
             }
         )

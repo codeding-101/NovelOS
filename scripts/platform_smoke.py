@@ -574,6 +574,96 @@ def main() -> None:
                     "候选已接收", timeout=20000
                 )
                 page.get_by_role("link", name="返回控制台").click()
+                page.get_by_role("link", name="执行者与路由设置", exact=False).click()
+                page.get_by_role("button", name="新增外部执行者", exact=True).click()
+                page.get_by_label("执行者名称", exact=True).fill("离线 Agent 验收")
+                page.get_by_label("执行者类型", exact=True).select_option("agent")
+                page.get_by_label("启用离线 Agent 协议", exact=False).check()
+                page.get_by_label("在路由规则中启用", exact=False).check()
+                page.get_by_role("button", name="保存执行者", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("执行者配置已保存")
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("允许 离线 Agent 验收", exact=True).check()
+                page.get_by_role("button", name="保存路由规则", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("作品路由规则已保存")
+                page.get_by_role("link", name="进入任务中心", exact=True).click()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("输入版本").select_option(label="起风 · v4")
+                page.get_by_label("执行者", exact=True).select_option(
+                    label="离线 Agent 验收"
+                )
+                page.get_by_label("任务目标").fill("离线 Agent 协议验收")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                grants = page.get_by_role("region", name="Agent 任务授权")
+                grants.get_by_role("button", name="签发任务令牌", exact=True).click()
+                token_input = grants.get_by_label("本次 Agent 令牌", exact=True)
+                expect(token_input).to_be_visible()
+                token = token_input.input_value()
+                task_id = (
+                    grants.get_by_text("任务 ID：", exact=False)
+                    .inner_text()
+                    .split("：")[1]
+                    .strip()
+                )
+                command = [
+                    sys.executable,
+                    str(ROOT / "scripts" / "offline_agent_client.py"),
+                    "--origin",
+                    origin,
+                    "--task-id",
+                    task_id,
+                    "--state",
+                    str(folder / "agent-state.json"),
+                    "--allow-insecure-loopback",
+                ]
+                agent_env = {**os.environ, "NOVELOS_AGENT_TOKEN": token}
+                receipts = []
+                for _ in range(2):
+                    run = subprocess.run(
+                        command,
+                        env=agent_env,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    assert run.returncode == 0, "Reference Agent did not complete"
+                    receipts.append(json.loads(run.stdout))
+                assert receipts[0] == receipts[1]
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "候选已接收", timeout=20000
+                )
+                assert (
+                    context.request.get(origin + f"/api/v1/tasks/{task_id}").json()[
+                        "attempt_count"
+                    ]
+                    == 1
+                )
+                expect(
+                    page.get_by_label("输入版本").locator("option:checked")
+                ).to_have_text("起风 · v4")
+                grants.get_by_role("button", name="清除页面令牌", exact=True).click()
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(path=str(output / "agent-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "agent-mobile.png"), full_page=True)
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
+                grants.get_by_role(
+                    "button", name="撤销授权 离线 Agent", exact=True
+                ).click()
+                expect(grants.get_by_role("status")).to_contain_text("授权已撤销")
+                revoked = subprocess.run(
+                    command, env=agent_env, capture_output=True, text=True, timeout=30
+                )
+                assert revoked.returncode == 1
+                assert (
+                    context.request.get(origin + f"/api/v1/tasks/{task_id}").json()[
+                        "state"
+                    ]
+                    == "SUCCEEDED"
+                )
+                page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
                     path=str(output / "platform-mobile.png"), full_page=True
@@ -618,6 +708,10 @@ def main() -> None:
                             "executor_registration_persists",
                             "routing_preflight_blocks_external_adapter",
                             "auto_task_uses_saved_policy",
+                            "offline_agent_registration_and_task_grant",
+                            "reference_agent_http_completion_and_duplicate_receipt",
+                            "agent_revocation_rejects_saved_result",
+                            "agent_mobile_no_horizontal_overflow",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

@@ -4,6 +4,7 @@ from app.platform.task_protocol import Contract, TaskType
 
 
 class ExecutorSettings(Contract):
+    agent_protocol: Literal["offline_v1"] | None = None
     name: str = Field(min_length=1, max_length=128)
     capabilities: list[TaskType] = Field(min_length=1, max_length=5)
     enabled: bool = False

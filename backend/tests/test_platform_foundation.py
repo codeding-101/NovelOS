@@ -212,7 +212,8 @@ def test_owner_cannot_be_reinitialized_and_worker_state_is_honest(platform):
         runtime = client.get("/api/v1/runtime").json()
         assert runtime["workers"][0]["online"] is True
         assert runtime["capabilities"]["task_execution"] is True
-        assert runtime["capabilities"]["external_execution"] is False
+        assert runtime["capabilities"]["external_execution"] is True
+        assert runtime["capabilities"]["provider_api_execution"] is False
         assert runtime["capabilities"]["paid_execution"] is False
         assert runtime["capabilities"]["finalization"] is False
         heartbeat(db, "test-worker", "stopped")

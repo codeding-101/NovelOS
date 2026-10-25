@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { platformRequest } from "@/lib/platform";
 import shell from "../platform.module.css";
 import styles from "./tasks.module.css";
+import AgentGrants from "./AgentGrants";
 
 type Work = { id: string; title: string };
 type Asset = {
@@ -13,6 +14,7 @@ type Asset = {
   head_version: number;
 };
 type Executor = {
+  mode: string;
   id: string;
   name: string;
   capabilities: string[];
@@ -112,6 +114,7 @@ const reasons: Record<string, string> = {
   OUTPUT_SCOPE_INVALID: "结果超出授权输入范围",
   BUDGET_UNCERTAIN: "调用费用尚不明确，请在预算中心核对后恢复",
   EXECUTOR_BLOCKED: "执行者或作品规则已变化，请在执行者设置中核对后恢复",
+  AGENT_REVOKED: "Agent 授权已撤销；重新授权后可恢复排队",
 };
 
 async function allPages<T>(path: string) {
@@ -468,7 +471,7 @@ export default function TasksPage() {
       </header>
       <h1>任务中心</h1>
       <p>
-        当前支持人工执行和本地流程校验。真实模型、外部 Agent
+        当前支持人工、本地校验和任务专属授权的离线 Agent。真实模型 API
         及付费调用尚未开放。
       </p>
       {error && (
@@ -802,6 +805,14 @@ export default function TasksPage() {
                         {JSON.stringify(detail.checkpoint.payload, null, 2)}
                       </pre>
                     </section>
+                  )}
+                  {executors.find((e) => e.id === detail.executor_id)
+                    ?.mode === "agent" && (
+                    <AgentGrants
+                      key={detail.id}
+                      task={detail}
+                      refresh={refresh}
+                    />
                   )}
                   <h3>执行记录</h3>
                   <ul>

@@ -31,6 +31,7 @@ from app.platform.task_protocol import CheckpointInput, ResultEnvelope, TaskInpu
 from app.platform.works import require_asset, require_work
 from app.platform import budget_service
 from app.platform import executor_service
+from app.platform import agent_security
 
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
 LEASE_SECONDS = 60
@@ -49,9 +50,14 @@ def fingerprint(payload):
 
 
 def event(session, task, action, **details):
+    agent_id = details.pop("agent_id", None)
     session.add(
         AuditEvent(
-            actor="worker:local_test" if details.pop("worker", False) else "owner",
+            actor="agent:" + agent_id
+            if agent_id
+            else "worker:local_test"
+            if details.pop("worker", False)
+            else "owner",
             action="task." + action,
             target_id=task.id,
             details={"work_id": task.work_id, **details},
@@ -112,11 +118,14 @@ def create_task(db, body: TaskInput):
             executor = session.get(Executor, body.executor_id)
             if body.executor_id != "auto" and (
                 executor is None
-                or executor.mode not in {"human", "local_test"}
+                or (
+                    executor.mode not in {"human", "local_test"}
+                    and not executor_service.offline_agent(executor)
+                )
                 or body.task_type not in executor.capabilities
             ):
                 raise HTTPException(
-                    422, "所选执行者不支持该任务；真实 API 与 Agent 尚未开放"
+                    422, "所选执行者不支持该任务；只允许内置或离线 Agent，模型 API 尚未开放"
                 )
             selected, routing = executor_service.select_for_task(
                 session, body.work_id, body.task_type, body.executor_id
@@ -235,9 +244,39 @@ def task_envelope(session, task, attempt, token):
     }
 
 
-def try_claim(db, task_id, executor_id):
+def try_claim(db, task_id, executor_id, agent=None):
     with db.sessions.begin() as session:
         task = locked_task(session, task_id)
+        if agent is not None:
+            agent_security.authorize(session, task, agent)
+            previous = (
+                session.get(TaskAttempt, task.active_attempt_id)
+                if task.active_attempt_id
+                else None
+            )
+            if (
+                previous is not None
+                and active(task, previous)
+                and previous.agent_credential_id == agent["id"]
+            ):
+                token = secrets.token_urlsafe(32)
+                previous.token_hash = hashed(token)
+                previous.lease_until = min(
+                    utc(task.deadline_at),
+                    utc(previous.deadline_at),
+                    now() + timedelta(seconds=LEASE_SECONDS),
+                )
+                task.version += 1
+                event(
+                    session,
+                    task,
+                    "agent_reconnected",
+                    agent_id=agent["id"],
+                    attempt_id=previous.id,
+                )
+                return task_envelope(session, task, previous, token)
+        elif session.get(Executor, task.executor_id).mode == "agent":
+            raise HTTPException(403, "外部 Agent 需要任务专属授权")
         if (
             task.executor_id != executor_id
             or task.state not in {"QUEUED", "RETRY_WAIT"}
@@ -281,6 +320,7 @@ def try_claim(db, task_id, executor_id):
             task_id=task.id,
             number=task.attempt_count + 1,
             token_hash=hashed(token),
+            agent_credential_id=agent["id"] if agent else None,
             lease_until=min(deadline, timestamp + timedelta(seconds=LEASE_SECONDS)),
             deadline_at=deadline,
         )
@@ -295,15 +335,17 @@ def try_claim(db, task_id, executor_id):
             "claimed",
             attempt_id=attempt.id,
             worker=executor_id == "local_test",
+            agent_id=agent["id"] if agent else None,
         )
         return task_envelope(session, task, attempt, token)
 
 
-def attempt_for(session, task, body):
+def attempt_for(session, task, body, agent=None):
     attempt = session.get(TaskAttempt, body.attempt_id)
     if (
         attempt is None
         or attempt.task_id != task.id
+        or (agent is not None and attempt.agent_credential_id != agent["id"])
         or not secrets.compare_digest(
             attempt.token_hash, hashed(body.lease_token.get_secret_value())
         )
@@ -328,10 +370,11 @@ def active(task, attempt):
     )
 
 
-def heartbeat(db, task_id, body):
+def heartbeat(db, task_id, body, agent=None):
     with db.sessions.begin() as session:
         task = locked_task(session, task_id)
-        attempt = attempt_for(session, task, body)
+        agent_security.authorize(session, task, agent)
+        attempt = attempt_for(session, task, body, agent)
         if not active(task, attempt):
             raise HTTPException(409, "本次执行已结束或过期，不能续期")
         attempt.lease_until = min(
@@ -342,12 +385,13 @@ def heartbeat(db, task_id, body):
         return {"lease_until": attempt.lease_until}
 
 
-def checkpoint(db, task_id, body: CheckpointInput):
+def checkpoint(db, task_id, body: CheckpointInput, agent=None):
     data = {"step": body.step, "payload": body.payload}
     signature = fingerprint(data)
     with db.sessions.begin() as session:
         task = locked_task(session, task_id)
-        attempt = attempt_for(session, task, body)
+        agent_security.authorize(session, task, agent)
+        attempt = attempt_for(session, task, body, agent)
         previous = session.scalar(
             select(TaskCheckpoint).where(
                 TaskCheckpoint.attempt_id == attempt.id,
@@ -385,6 +429,7 @@ def checkpoint(db, task_id, body: CheckpointInput):
             task,
             "checkpoint",
             checkpoint_id=item.id,
+            agent_id=agent["id"] if agent else None,
             worker=task.executor_id == "local_test",
         )
         return {"id": item.id}
@@ -394,12 +439,13 @@ def receipt(item):
     return {"id": item.id, "disposition": item.disposition, "reason": item.reason}
 
 
-def submit(db, task_id, body: ResultEnvelope):
+def submit(db, task_id, body: ResultEnvelope, agent=None):
     data = body.model_dump(mode="json", exclude={"lease_token"})
     signature = fingerprint(data)
     with db.sessions.begin() as session:
         task = locked_task(session, task_id)
-        attempt = attempt_for(session, task, body)
+        agent_security.authorize(session, task, agent)
+        attempt = attempt_for(session, task, body, agent)
         if body.task_id != task.id or body.executor_id != task.executor_id:
             raise HTTPException(422, "结果与任务或执行者不匹配")
         previous = session.scalar(
@@ -478,6 +524,7 @@ def submit(db, task_id, body: ResultEnvelope):
             disposition=disposition,
             reason=reason,
             worker=task.executor_id == "local_test",
+            agent_id=agent["id"] if agent else None,
         )
         return receipt(item)
 

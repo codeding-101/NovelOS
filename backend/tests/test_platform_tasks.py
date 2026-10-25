@@ -100,7 +100,11 @@ def test_task_contract_access_idempotence_and_no_external_execution(platform):
             client.post(
                 "/api/v1/tasks",
                 headers=headers,
-                json={**body.model_dump(), "executor_id": "real_api"},
+                json={
+                    **body.model_dump(),
+                    "executor_id": "real_api",
+                    "request_key": "unregistered-api",
+                },
             ).status_code
             == 422
         )

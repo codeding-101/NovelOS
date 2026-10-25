@@ -142,8 +142,8 @@ def reserve(session, task, attempt_id, body: ReservationInput):
     attempt = session.get(TaskAttempt, attempt_id)
     require_active(task, attempt)
     executor = session.get(Executor, task.executor_id)
-    if executor.mode not in {"api", "agent"}:
-        raise HTTPException(409, "人工与本地校验不使用外部调用预算")
+    if executor.mode not in {"api", "agent"} or executor.agent_protocol == "offline_v1":
+        raise HTTPException(409, "人工、本地校验与离线 Agent 不使用外部调用预算")
     budget = lock_budget(session, task.work_id)
     previous = session.scalar(
         select(BudgetReservation).where(

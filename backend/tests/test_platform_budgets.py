@@ -65,7 +65,7 @@ def test_budget_upgrade_preserves_existing_task(platform_database):
         session.flush()
         task_id = task.id
     db.upgrade()
-    assert db.require_current() == "0006_executor_routing"
+    assert db.require_current() == "0007_agent_gateway"
     with db.sessions() as session:
         task = session.get(CreativeTask, task_id)
         assert (

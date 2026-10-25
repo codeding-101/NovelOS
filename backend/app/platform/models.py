@@ -258,6 +258,7 @@ class Executor(PlatformBase):
     credential_id: Mapped[str | None] = mapped_column(String(32))
     registration_key: Mapped[str | None] = mapped_column(String(128), unique=True)
     registration_hash: Mapped[str | None] = mapped_column(String(64))
+    agent_protocol: Mapped[str | None] = mapped_column(String(32))
 
 
 class ExecutionPolicy(PlatformBase):
@@ -332,6 +333,7 @@ class TaskAttempt(PlatformBase):
     task_id: Mapped[str] = mapped_column(ForeignKey("creative_tasks.id"), index=True)
     number: Mapped[int] = mapped_column(Integer)
     token_hash: Mapped[str] = mapped_column(String(64))
+    agent_credential_id: Mapped[str | None] = mapped_column(String(32))
     state: Mapped[str] = mapped_column(String(24), default="RUNNING")
     lease_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -433,3 +435,12 @@ class BudgetEvent(PlatformBase):
     actor: Mapped[str] = mapped_column(String(32))
     details: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentTaskGrant(PlatformBase):
+    __tablename__ = "agent_task_grants"
+    credential_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_credentials.id"), primary_key=True
+    )
+    task_id: Mapped[str] = mapped_column(ForeignKey("creative_tasks.id"), index=True)
+    executor_id: Mapped[str] = mapped_column(ForeignKey("executors.id"))

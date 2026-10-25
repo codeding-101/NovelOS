@@ -38,6 +38,11 @@ from app.platform.asset_tools import router as asset_tools_router
 from app.platform.tasks import router as tasks_router
 from app.platform.budgets import router as budgets_router
 from app.platform.executors import router as executors_router
+from app.platform.agents import (
+    router as agent_router,
+    owner_router as agent_owner_router,
+)
+from app.platform.agent_security import authenticate_agent
 
 logger = logging.getLogger("novelos.platform")
 PUBLIC_PATHS = {"/healthz", "/readyz", "/api/v1/auth/status", "/api/v1/auth/login"}
@@ -91,12 +96,31 @@ def create_app(
     app.include_router(tasks_router)
     app.include_router(budgets_router)
     app.include_router(executors_router)
+    app.include_router(agent_router)
+    app.include_router(agent_owner_router)
 
     @app.middleware("http")
     async def access_control(request: Request, call_next):
         request.state.request_id = uuid4().hex
         try:
-            if request.url.path not in PUBLIC_PATHS:
+            if request.url.path.startswith("/api/agent/v1/"):
+
+                def lookup_agent():
+                    with db.sessions() as session:
+                        return authenticate_agent(
+                            session, request.headers.get("authorization", "")
+                        )
+
+                agent = await run_in_threadpool(lookup_agent)
+                if agent is None:
+                    return error(
+                        request,
+                        401,
+                        "AGENT_AUTH_REQUIRED",
+                        "需要有效的任务专属 Agent 令牌",
+                    )
+                request.state.agent = agent
+            elif request.url.path not in PUBLIC_PATHS:
 
                 def lookup():
                     with db.sessions() as session:
@@ -129,7 +153,7 @@ def create_app(
                     limit = (
                         8 * 1024 * 1024
                         if request.url.path.startswith(
-                            ("/api/v1/works/", "/api/v1/tasks/")
+                            ("/api/v1/works/", "/api/v1/tasks/", "/api/agent/v1/")
                         )
                         else 65536
                     )
@@ -266,7 +290,9 @@ def create_app(
                 "credentials": True,
                 "work_assets": True,
                 "task_execution": True,
-                "external_execution": False,
+                "external_execution": True,
+                "agent_gateway": "offline_v1",
+                "provider_api_execution": False,
                 "local_task_execution": True,
                 "paid_execution": False,
                 "work_budgets": True,
