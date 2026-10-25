@@ -1,7 +1,7 @@
 """Transactional accounting. Callers lock task first, then budget; no network I/O."""
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, update, case
 
 from app.platform.models import (
     AuditEvent,
@@ -11,6 +11,7 @@ from app.platform.models import (
     Work,
     Executor,
     TaskAttempt,
+    TaskRoutingDecision,
     now,
 )
 from app.platform.security import utc
@@ -137,6 +138,162 @@ def require_active(task, attempt):
         raise HTTPException(409, "执行已结束或过期，不能预留或发起调用")
 
 
+class TaskBudgetExceeded(HTTPException):
+    def __init__(self, message="任务累计预算不足，请在任务详情核对上限与已有占用"):
+        super().__init__(409, message)
+
+
+def task_summary(session, task):
+    held = BudgetReservation.state.in_(["RESERVED", "DISPATCHED", "UNKNOWN"])
+    settled = BudgetReservation.state == "SETTLED"
+    totals = session.execute(
+        select(
+            func.coalesce(
+                func.sum(case((settled, BudgetReservation.actual_microunits), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            settled,
+                            BudgetReservation.input_tokens
+                            + BudgetReservation.output_tokens,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((held, BudgetReservation.reserved_microunits), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((held, BudgetReservation.reserved_tokens), else_=0)), 0
+            ),
+            func.coalesce(
+                func.sum(case((BudgetReservation.state == "UNKNOWN", 1), else_=0)), 0
+            ),
+        ).where(BudgetReservation.task_id == task.id)
+    ).one()
+    spent_money, spent_tokens, held_money, held_tokens, unknown = totals
+    executor = session.get(Executor, task.executor_id)
+    configured = (
+        task.budget_limit_microunits is not None
+        and task.budget_limit_tokens is not None
+    )
+    currency = task.budget_currency
+    if not currency:
+        decision = session.get(TaskRoutingDecision, task.id)
+        if decision:
+            candidate = next(
+                (
+                    row
+                    for row in decision.snapshot["candidates"]
+                    if row["id"] == task.executor_id
+                ),
+                {},
+            )
+            currency = candidate.get("currency")
+    return {
+        "supported": executor.mode == "api" and executor.api_config is not None,
+        "configured": configured,
+        "currency": currency,
+        "limit_microunits": task.budget_limit_microunits,
+        "limit_tokens": task.budget_limit_tokens,
+        "spent_microunits": spent_money,
+        "spent_tokens": spent_tokens,
+        "held_microunits": held_money,
+        "held_tokens": held_tokens,
+        "unknown_count": unknown,
+        "remaining_microunits": max(
+            0, task.budget_limit_microunits - spent_money - held_money
+        )
+        if configured
+        else None,
+        "remaining_tokens": max(
+            0, task.budget_limit_tokens - spent_tokens - held_tokens
+        )
+        if configured
+        else None,
+        "over_limit": configured
+        and (
+            spent_money + held_money > task.budget_limit_microunits
+            or spent_tokens + held_tokens > task.budget_limit_tokens
+        ),
+    }
+
+
+def check_task_limit(session, task, money=0, tokens=0, currency=None):
+    summary = task_summary(session, task)
+    if not summary["configured"]:
+        if summary["supported"]:
+            raise TaskBudgetExceeded("任务尚未配置累计预算，请在任务详情设置后恢复")
+        return
+    if currency is not None and currency != task.budget_currency:
+        raise TaskBudgetExceeded("调用币种与任务预算不一致")
+    if (
+        summary["spent_microunits"] + summary["held_microunits"] + money
+        > task.budget_limit_microunits
+        or summary["spent_tokens"] + summary["held_tokens"] + tokens
+        > task.budget_limit_tokens
+    ):
+        raise TaskBudgetExceeded()
+
+
+def check_next_task_call(session, task):
+    executor = session.get(Executor, task.executor_id)
+    if executor.mode != "api" or executor.api_config is None:
+        return
+    decision = session.get(TaskRoutingDecision, task.id)
+    if decision is None:
+        raise TaskBudgetExceeded("任务缺少调用计划，请重新创建任务")
+    candidate = next(
+        row for row in decision.snapshot["candidates"] if row["id"] == task.executor_id
+    )
+    check_task_limit(
+        session,
+        task,
+        candidate["estimated_microunits"],
+        candidate["estimated_tokens"],
+        candidate["currency"],
+    )
+
+
+def configure_task(db, task_id, body):
+    from app.platform import task_service as tasks
+
+    with db.sessions.begin() as session:
+        task = tasks.locked_task(session, task_id)
+        summary = task_summary(session, task)
+        if not summary["supported"] or task.state in tasks.TERMINAL:
+            raise HTTPException(409, "只可调整未结束的模型任务预算")
+        if task.version != body.expected_version:
+            raise HTTPException(
+                409, "任务版本已变化，请刷新后核对；输入未覆盖服务器配置"
+            )
+        if body.currency != summary["currency"]:
+            raise HTTPException(409, "任务预算币种必须与创建时的调用计划一致")
+        before = {
+            "currency": task.budget_currency,
+            "limit_microunits": task.budget_limit_microunits,
+            "limit_tokens": task.budget_limit_tokens,
+        }
+        task.budget_currency = body.currency
+        task.budget_limit_microunits = body.limit_microunits
+        task.budget_limit_tokens = body.limit_tokens
+        task.version += 1
+        tasks.event(
+            session,
+            task,
+            "budget_configured",
+            before=before,
+            after=body.model_dump(exclude={"expected_version"}),
+        )
+        return {"version": task.version, "budget": task_summary(session, task)}
+
+
 def reserve(session, task, attempt_id, body: ReservationInput):
     """Internal adapter hook, not an HTTP endpoint. Caller holds the task lock."""
     attempt = session.get(TaskAttempt, attempt_id)
@@ -161,6 +318,9 @@ def reserve(session, task, attempt_id, body: ReservationInput):
         raise HTTPException(409, "调用币种与作品预算不一致")
     if unknown_count(session, task.work_id):
         raise HTTPException(409, "作品存在待对账调用，确认费用前不能新增调用")
+    check_task_limit(
+        session, task, body.reserved_microunits, body.reserved_tokens, body.currency
+    )
     if (
         budget.spent_microunits + budget.held_microunits + body.reserved_microunits
         > budget.limit_microunits
@@ -195,6 +355,7 @@ def dispatch(session, task, reservation_id):
         return False
     if unknown_count(session, task.work_id):
         raise HTTPException(409, "作品存在待对账调用，不能发起新调用")
+    check_task_limit(session, task, currency=item.currency)
     if (
         budget.spent_microunits + budget.held_microunits > budget.limit_microunits
         or budget.spent_tokens + budget.held_tokens > budget.limit_tokens

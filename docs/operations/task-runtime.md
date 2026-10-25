@@ -1,6 +1,6 @@
 # 任务中心与中断恢复
 
-适用版本：M3，schema `0008_model_api`，任务协议 `1.0`。
+适用版本：M3，schema `0009_task_budgets`，任务协议 `1.0`。
 
 ## 网站操作
 
@@ -41,6 +41,7 @@
 | `POST /tasks` | 创建任务；同作品 `request_key` 与相同内容重试返回原任务，改内容返回冲突 |
 | `GET /tasks?work_id=…&offset=0&limit=50` | 分页读取任务，单页最多 100 |
 | `GET /tasks/{id}` | 状态、版本、执行记录、最新检查点与结果摘要 |
+| `PUT /tasks/{id}/budget` | 按任务版本调整未结束模型任务的累计费用／token 上限，不自动恢复 |
 | `POST /tasks/{id}/claim` | 人工领取，返回 `TaskEnvelope` |
 | `POST /tasks/{id}/takeover` | 带 `expected_version` 接续有效人工尝试，轮换凭证 |
 | `POST /tasks/{id}/heartbeat` | 当前尝试续期 |
@@ -58,6 +59,8 @@
 本机模型协议测试由内部服务提交 `usage.accounting=settled`，用量必须与同尝试的已结算调用一致，并与候选在同一事务提交；公共人工和 Agent 接口拒绝这种用量。`MODEL_PREFLIGHT_FAILED` 表示发送前检查失败；已存在未知调用时统一使用 `BUDGET_UNCERTAIN`。配置及测试边界见 [模型协议指南](model-api-rehearsal.md)，不代表真实模型已启用。
 
 ## 验证和当前边界
+
+模型任务新增 [累计任务预算](task-budgets.md)，各次尝试共享已结算及占用金额。`TASK_BUDGET_EXCEEDED` 表示任务额度未配置或不足；领取阻断不消耗尝试，调整额度后须手动恢复。作品预算仍同时生效，未知费用不因调额释放。
 
 双数据库测试覆盖并发领取、取消与结果竞态、重复提交、过期恢复、接续凭证撤销、输入过期、依赖隔离、事务回滚、重试耗尽和队列阻塞。浏览器覆盖人工进度保存／刷新接续／暂停恢复、候选不修改正文、本地完成和取消；证据见 [执行记录](../planning/execution-status.md)。
 

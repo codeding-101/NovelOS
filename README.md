@@ -6,6 +6,8 @@
 
 ## 文档
 
+模型任务已支持跨尝试累计的费用与 token 上限，与作品总预算共同生效；额度不足会阻止继续执行，网页可调整并手动恢复。按用户当前要求，真实模型调用继续保持关闭。
+
 - [需求与开发规划](docs/planning/README.md)
 - [当前执行记录和验收结果](docs/planning/execution-status.md)
 - [部署与本地开发指南](docs/operations/platform-setup.md)
@@ -23,6 +25,8 @@
 - [任务专属 Agent 网关决策](docs/decisions/0007-agent-gateway.md)
 - [模型 API 配置与本机协议验收](docs/operations/model-api-rehearsal.md)
 - [模型调用事务与发布边界决策](docs/decisions/0008-model-api-rehearsal.md)
+- [任务累计预算与恢复](docs/operations/task-budgets.md)
+- [任务累计预算决策](docs/decisions/0009-task-budgets.md)
 - [旧版使用说明归档](docs/legacy/README.md)
 
 ## 服务器部署
@@ -52,7 +56,7 @@ cd backend
 python -m pip install -r requirements-dev.txt
 python -m pytest
 # 配置隔离的 NOVELOS_TEST_POSTGRES_URL 后，同一组用例也会验证真实 PostgreSQL。
-python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py tests/test_platform_models.py -v
+python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py tests/test_platform_models.py tests/test_platform_task_budgets.py -v
 ```
 
 前端构建：在 `frontend` 执行 `npm ci` 和 `npm run build`。浏览器验收与容器冒烟见部署指南和 GitHub Actions 配置。真实模型测试默认跳过；模拟结果不能替代朱雀检测证据。

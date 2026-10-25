@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 import pytest
-from sqlalchemy import func, select, update, delete
+from sqlalchemy import func, select, update, delete, insert
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.platform import budget_service as budget, task_service as tasks
@@ -23,6 +23,7 @@ from app.platform.models import (
     CreativeTask,
     Executor,
     WorkBudget,
+    identifier,
     now,
 )
 from platform_fixtures import signed_in
@@ -51,21 +52,24 @@ def test_budget_upgrade_preserves_existing_task(platform_database):
     body = task_input(db)
     # Seed the historical schema without invoking newer application routing services.
     with db.sessions.begin() as session:
-        task = CreativeTask(
-            work_id=body.work_id,
-            executor_id="human",
-            input_revision_id=body.input_revision_id,
-            task_type=body.task_type,
-            objective=body.objective,
-            request_key=body.request_key,
-            request_hash=tasks.fingerprint(body.model_dump()),
-            deadline_at=now() + timedelta(days=1),
+        task_id = identifier()
+        session.execute(
+            insert(CreativeTask.__table__).values(
+                id=task_id,
+                work_id=body.work_id,
+                executor_id="human",
+                input_revision_id=body.input_revision_id,
+                task_type=body.task_type,
+                objective=body.objective,
+                request_key=body.request_key,
+                request_hash=tasks.fingerprint(
+                    body.model_dump(exclude={"spending_limit"})
+                ),
+                deadline_at=now() + timedelta(days=1),
+            )
         )
-        session.add(task)
-        session.flush()
-        task_id = task.id
     db.upgrade()
-    assert db.require_current() == "0008_model_api"
+    assert db.require_current() == "0009_task_budgets"
     with db.sessions() as session:
         task = session.get(CreativeTask, task_id)
         assert (

@@ -736,6 +736,88 @@ def main() -> None:
                 expect(page.get_by_role("region", name="调用账目")).to_contain_text(
                     "0.000035"
                 )
+                page.goto(origin + "/tasks")
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("输入版本").select_option(label="起风 · v4")
+                page.get_by_label("执行者", exact=True).select_option(
+                    label="模型协议模拟验收"
+                )
+                page.get_by_label("任务费用上限（可选）", exact=True).fill("0.002032")
+                page.get_by_label("任务 token 上限（可选）", exact=True).fill("8000")
+                page.get_by_label("任务目标").fill("任务预算恢复验收")
+                model.response["id"] = "task-budget-first"
+                model.response["choices"][0]["finish_reason"] = "length"
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "结果不完整", timeout=20000
+                )
+                panel = page.get_by_role("region", name="任务累计预算")
+                expect(
+                    panel.get_by_label("任务累计费用上限（CNY）", exact=True)
+                ).to_have_value("0.002032")
+                page.get_by_role("button", name="恢复排队", exact=True).click()
+                expect(
+                    page.get_by_role("alert").filter(has_text="任务累计预算不足")
+                ).to_be_visible()
+                second_task = context.new_page()
+                second_task.goto(origin + "/tasks")
+                second_task.get_by_label("当前作品").select_option(
+                    label="浏览器作品验证"
+                )
+                second_task.get_by_role(
+                    "button", name="任务预算恢复验收", exact=False
+                ).click()
+                second_panel = second_task.get_by_role("region", name="任务累计预算")
+                expect(
+                    second_panel.get_by_label("任务累计 token 上限", exact=True)
+                ).to_have_value("8000")
+                second_panel.get_by_label("任务累计费用上限（CNY）", exact=True).fill(
+                    "0.020000"
+                )
+                panel.get_by_label("任务累计费用上限（CNY）", exact=True).fill(
+                    "0.010000"
+                )
+                panel.get_by_label("任务累计 token 上限", exact=True).fill("30000")
+                panel.get_by_role("button", name="保存任务预算", exact=True).click()
+                expect(panel.get_by_role("status")).to_contain_text("任务预算已保存")
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "已暂停"
+                )
+                second_panel.get_by_role(
+                    "button", name="保存任务预算", exact=True
+                ).click()
+                expect(second_panel.get_by_role("alert")).to_contain_text(
+                    "任务版本已变化"
+                )
+                expect(
+                    second_panel.get_by_label("任务累计费用上限（CNY）", exact=True)
+                ).to_have_value("0.020000")
+                second_task.close()
+                page.reload()
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_role("button", name="任务预算恢复验收", exact=False).click()
+                expect(
+                    panel.get_by_label("任务累计 token 上限", exact=True)
+                ).to_have_value("30000")
+                model.response["id"] = "task-budget-second"
+                model.response["choices"][0]["finish_reason"] = "stop"
+                page.get_by_role("button", name="恢复排队", exact=True).click()
+                expect(page.get_by_role("region", name="任务详情")).to_contain_text(
+                    "候选已接收", timeout=20000
+                )
+                expect(panel).to_contain_text("已结算 0.000070 / 240 token")
+                assert len(model.calls) == 3
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(
+                    path=str(output / "task-budget-desktop.png"), full_page=True
+                )
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(
+                    path=str(output / "task-budget-mobile.png"), full_page=True
+                )
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
                 page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
@@ -789,6 +871,11 @@ def main() -> None:
                             "loopback_model_worker_atomic_candidate_and_usage",
                             "simulated_usage_visible_in_task_and_budget",
                             "model_mobile_no_horizontal_overflow",
+                            "task_budget_custom_limits_persist",
+                            "task_budget_blocks_retry_and_manual_increase_keeps_paused",
+                            "task_budget_conflict_preserves_input",
+                            "task_budget_counts_usage_across_attempts",
+                            "task_budget_mobile_no_horizontal_overflow",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

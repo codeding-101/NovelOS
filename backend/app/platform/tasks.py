@@ -20,8 +20,10 @@ from app.platform.task_protocol import (
     ResultEnvelope,
     TaskInput,
     TaskEnvelope,
+    TaskSpendingUpdate,
 )
 from app.platform import task_service as service
+from app.platform import budget_service
 from app.platform.works import require_work
 from app.platform.security import utc
 
@@ -88,6 +90,7 @@ def detail(task_id: str, request: Request):
         routing = session.get(TaskRoutingDecision, task_id)
         return {
             **task_data(task),
+            "spending_budget": budget_service.task_summary(session, task),
             "routing": {
                 "requested_executor_id": routing.requested_executor_id,
                 "selected_executor_id": routing.selected_executor_id,
@@ -141,6 +144,11 @@ def detail(task_id: str, request: Request):
                 )
             ],
         }
+
+
+@router.put("/tasks/{task_id}/budget")
+def configure_task_budget(task_id: str, body: TaskSpendingUpdate, request: Request):
+    return budget_service.configure_task(request.app.state.database, task_id, body)
 
 
 @router.get("/tasks/{task_id}/submissions/{submission_id}")

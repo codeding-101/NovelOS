@@ -101,7 +101,11 @@ def current_input(session, task):
 
 
 def create_task(db, body: TaskInput):
-    request_hash = fingerprint(body.model_dump())
+    request_hash = fingerprint(
+        body.model_dump(
+            exclude={"spending_limit"} if body.spending_limit is None else set()
+        )
+    )
 
     def existing(session):
         item = session.scalar(
@@ -142,6 +146,38 @@ def create_task(db, body: TaskInput):
             selected, routing = executor_service.select_for_task(
                 session, body.work_id, body.task_type, body.executor_id, bound
             )
+            candidate = next(
+                row for row in routing["candidates"] if row["id"] == selected
+            )
+            spending_limit = body.spending_limit
+            selected_executor = session.get(Executor, selected)
+            if executor_service.model_api(selected_executor):
+                from app.platform.task_protocol import TaskSpendingLimit
+
+                if spending_limit is None:
+                    spending_limit = TaskSpendingLimit(
+                        currency=candidate["currency"],
+                        limit_microunits=min(
+                            10**12,
+                            candidate["estimated_microunits"] * body.max_attempts,
+                        ),
+                        limit_tokens=min(
+                            10**12, candidate["estimated_tokens"] * body.max_attempts
+                        ),
+                    )
+                if (
+                    spending_limit.currency != candidate["currency"]
+                    or spending_limit.limit_microunits
+                    < candidate["estimated_microunits"]
+                    or spending_limit.limit_tokens < candidate["estimated_tokens"]
+                ):
+                    raise HTTPException(
+                        409, "任务预算须与计划币种一致，并至少容纳一次调用预留"
+                    )
+            elif spending_limit is not None:
+                raise HTTPException(
+                    422, "人工、本地校验和离线 Agent 不设置供应商调用预算"
+                )
             revision = session.get(AssetRevision, body.input_revision_id)
             if revision is None:
                 raise HTTPException(404, "输入版本不存在")
@@ -162,6 +198,13 @@ def create_task(db, body: TaskInput):
                 objective=body.objective,
                 request_key=body.request_key,
                 request_hash=request_hash,
+                budget_currency=spending_limit.currency if spending_limit else None,
+                budget_limit_microunits=spending_limit.limit_microunits
+                if spending_limit
+                else None,
+                budget_limit_tokens=spending_limit.limit_tokens
+                if spending_limit
+                else None,
                 priority=body.priority,
                 max_attempts=body.max_attempts,
                 deadline_at=now() + timedelta(seconds=body.deadline_seconds),
@@ -186,6 +229,7 @@ def create_task(db, body: TaskInput):
                 "created",
                 executor=task.executor_id,
                 input_revision_id=revision.id,
+                spending_limit=spending_limit.model_dump() if spending_limit else None,
             )
             return task.id
     except IntegrityError:
@@ -303,6 +347,12 @@ def try_claim(db, task_id, executor_id, agent=None, *, provider=False):
             return None
         if not executor_service.ready_for_claim(session, task):
             transition(task, "PAUSED", "EXECUTOR_BLOCKED")
+            event(session, task, "blocked", reason=task.reason)
+            return None
+        try:
+            budget_service.check_next_task_call(session, task)
+        except budget_service.TaskBudgetExceeded:
+            transition(task, "PAUSED", "TASK_BUDGET_EXCEEDED")
             event(session, task, "blocked", reason=task.reason)
             return None
         if budget_service.unknown_count(session, task.work_id, task.id):
@@ -577,6 +627,7 @@ def control(db, task_id, action, expected_version):
         if action == "resume":
             if not executor_service.ready_for_claim(session, task):
                 raise HTTPException(409, "执行者或路由规则仍阻止执行，请先核对设置")
+            budget_service.check_next_task_call(session, task)
             if budget_service.unknown_count(session, task.work_id, task.id):
                 raise HTTPException(409, "此任务仍有未知费用，请先核对账目再恢复")
             if (

@@ -31,7 +31,18 @@ class Contract(BaseModel):
         return self
 
 
+class TaskSpendingLimit(Contract):
+    currency: Literal["CNY", "USD"]
+    limit_microunits: int = Field(strict=True, ge=0, le=10**12)
+    limit_tokens: int = Field(strict=True, ge=0, le=10**12)
+
+
+class TaskSpendingUpdate(TaskSpendingLimit):
+    expected_version: int = Field(strict=True, ge=1)
+
+
 class TaskInput(Contract):
+    spending_limit: TaskSpendingLimit | None = None
     protocol_version: Literal["1.0"] = "1.0"
     work_id: str = Field(min_length=1, max_length=32)
     executor_id: str = Field(min_length=1, max_length=32)

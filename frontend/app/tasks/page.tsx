@@ -5,6 +5,7 @@ import { platformRequest } from "@/lib/platform";
 import shell from "../platform.module.css";
 import styles from "./tasks.module.css";
 import AgentGrants from "./AgentGrants";
+import TaskBudget, { TaskSpendingBudget, parseMoney } from "./TaskBudget";
 
 type Work = { id: string; title: string };
 type Asset = {
@@ -14,6 +15,8 @@ type Asset = {
   head_version: number;
 };
 type Executor = {
+  api_config: Record<string, unknown> | null;
+  currency: string | null;
   mode: string;
   id: string;
   name: string;
@@ -42,6 +45,7 @@ type Checkpoint = {
   payload: { note?: string };
 };
 type Detail = Task & {
+  spending_budget: TaskSpendingBudget;
   routing: {
     requested_executor_id: string;
     selected_executor_id: string;
@@ -118,6 +122,7 @@ const reasons: Record<string, string> = {
   AGENT_REVOKED: "Agent 授权已撤销；重新授权后可恢复排队",
   MODEL_PREFLIGHT_FAILED:
     "模型协议检查未通过，未发送请求；请核对配置、凭证和预算",
+  TASK_BUDGET_EXCEEDED: "任务累计预算不足或尚未配置，请核对任务预算后恢复",
 };
 
 async function allPages<T>(path: string) {
@@ -146,6 +151,8 @@ export default function TasksPage() {
   const [objective, setObjective] = useState("");
   const [dependency, setDependency] = useState("");
   const [maxAttempts, setMaxAttempts] = useState(3);
+  const [taskMoney, setTaskMoney] = useState("");
+  const [taskTokens, setTaskTokens] = useState("");
   const [content, setContent] = useState("");
   const [note, setNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
@@ -318,7 +325,25 @@ export default function TasksPage() {
     await run(async () => {
       const asset = assets.find((a) => a.id === assetId);
       if (!asset) throw new Error("请选择已保存的输入资产。");
+      const selected = executors.find((item) => item.id === executorId);
+      const custom = selected?.api_config && (taskMoney || taskTokens);
+      if (
+        custom &&
+        (!taskMoney ||
+          !/^\d+$/.test(taskTokens) ||
+          Number(taskTokens) > 10 ** 12)
+      )
+        throw new Error(
+          "请同时填写任务费用和 token 上限，token 须为支持范围内的非负整数。",
+        );
       const payload = {
+        spending_limit: custom
+          ? {
+              currency: selected?.currency,
+              limit_microunits: parseMoney(taskMoney),
+              limit_tokens: Number(taskTokens),
+            }
+          : null,
         work_id: workId,
         input_revision_id: asset.revision_id,
         executor_id: executorId,
@@ -558,6 +583,8 @@ export default function TasksPage() {
                   value={executorId}
                   onChange={(e) => {
                     setExecutorId(e.target.value);
+                    setTaskMoney("");
+                    setTaskTokens("");
                     setType(
                       e.target.value === "auto"
                         ? "analyze"
@@ -633,6 +660,35 @@ export default function TasksPage() {
                 onChange={(e) => setObjective(e.target.value)}
               />
             </label>
+            {executors.find((item) => item.id === executorId)?.api_config && (
+              <section aria-label="创建任务预算">
+                <p>
+                  任务预算按所有尝试累计，币种为{" "}
+                  {executors.find((item) => item.id === executorId)?.currency}
+                  。留空时按单次预留 × 最大尝试次数设置，作品预算同时生效。
+                </p>
+                <div className={styles.fields}>
+                  <label>
+                    任务费用上限（可选）
+                    <input
+                      inputMode="decimal"
+                      disabled={busy}
+                      value={taskMoney}
+                      onChange={(event) => setTaskMoney(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    任务 token 上限（可选）
+                    <input
+                      inputMode="numeric"
+                      disabled={busy}
+                      value={taskTokens}
+                      onChange={(event) => setTaskTokens(event.target.value)}
+                    />
+                  </label>
+                </div>
+              </section>
+            )}
             <p>
               任务最长保留 24 小时执行窗口，单次执行最多 1
               小时。关闭页面后，本地校验继续；人工进度请先保存检查点。
@@ -713,6 +769,13 @@ export default function TasksPage() {
                       : "已出现新版本，旧输入成果需复查"}
                   </p>
                   <p>截止：{new Date(detail.deadline_at).toLocaleString()}</p>
+                  {detail.spending_budget.supported && (
+                    <TaskBudget
+                      key={detail.id}
+                      task={detail}
+                      refresh={refresh}
+                    />
+                  )}
                   {detail.reason && (
                     <p className={shell.notice}>
                       {reasons[detail.reason] || detail.reason}

@@ -236,13 +236,17 @@ def execute(db, settings, task_id, executor_id):
             test_mode=True,
         )
         finish(db, envelope, reservation_id, chosen, raw)
-    except Exception:
+    except Exception as exc:
         # Never log supplier exceptions/bodies: they may echo credentials or manuscripts.
         pause(
             db,
             task_id,
             envelope["attempt_id"],
-            "BUDGET_UNCERTAIN" if dispatched else "MODEL_PREFLIGHT_FAILED",
+            "BUDGET_UNCERTAIN"
+            if dispatched
+            else "TASK_BUDGET_EXCEEDED"
+            if isinstance(exc, budgets.TaskBudgetExceeded)
+            else "MODEL_PREFLIGHT_FAILED",
         )
     return True
 

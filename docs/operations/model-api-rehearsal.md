@@ -1,6 +1,6 @@
 # 模型 API 配置与本机协议验收
 
-适用版本：schema `0008_model_api`。本工作包完成 Chat Completions 文本协议、预算预留、用量解析与候选保存的本机联调，**未开放公网模型调用或真实付费执行**。
+适用版本：模型协议自 schema `0008_model_api` 引入，当前 schema `0009_task_budgets`。本工作包完成 Chat Completions 文本协议、预算预留、用量解析与候选保存的本机联调，**未开放公网模型调用或真实付费执行**。
 
 ## 配置入口
 
@@ -34,6 +34,8 @@
 
 ## 故障与恢复
 
+任务还受 [累计任务预算](task-budgets.md) 约束。默认额度为一次冻结计划预留乘以最大尝试次数，可在创建时指定或在未结束任务详情调整；跨尝试累计，不随重试重置。历史模型任务升级后须先配置额度。作品预算同时生效，未配置／不足时不会发送请求。
+
 | 场景 | 处理 |
 | --- | --- |
 | 完整 `stop`、非空文本、有效用量 | 同一事务结算并保存候选，原文不变 |
@@ -49,4 +51,4 @@
 
 `scripts/model_fixture.py` 仅监听本机临时端口，返回标注为模拟的固定文本，不调用模型。`scripts/platform_smoke.py` 在临时库验证网页配置、Worker、候选及预算展示；`backend/tests/test_platform_models.py` 覆盖双库并发、事务回滚和故障。执行方法见 [部署指南](platform-setup.md)。
 
-开放真实调用仍需确认正文外发与预算内消费授权，并实现公网目标限制、TLS／DNS 与网络边界、供应商实际计量及有限真实联调。当前 M3、M1 容器部署验收和后续朱雀门禁均未整体完成。参见 [执行记录](../planning/execution-status.md) 与 [ADR 0008](../decisions/0008-model-api-rehearsal.md)。
+用户已明确要求继续开发、暂不开放真实调用，当前保持此边界。后续如变更授权，仍须完成公网目标限制、TLS／DNS 与网络边界、供应商实际计量及有限真实联调。当前 M3、M1 容器部署验收和后续朱雀门禁均未整体完成。参见 [执行记录](../planning/execution-status.md) 与 [ADR 0008](../decisions/0008-model-api-rehearsal.md)。
