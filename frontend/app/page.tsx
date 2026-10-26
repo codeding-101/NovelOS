@@ -224,6 +224,9 @@ export default function Page() {
             <p>
               <a href="/executors">执行者与路由设置 →</a>
             </p>
+            <p>
+              <a href="/quotas">管理月度配额 →</a>
+            </p>
           </section>
           <div className={styles.cards}>
             <section className={styles.card}>

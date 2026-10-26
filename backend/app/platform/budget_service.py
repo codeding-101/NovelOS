@@ -1,4 +1,4 @@
-"""Transactional accounting. Callers lock task first, then budget; no network I/O."""
+"""Accounting lock order: task, executor, shared quota, work budget; no network I/O."""
 
 from fastapi import HTTPException
 from sqlalchemy import func, select, update, case
@@ -18,6 +18,7 @@ from app.platform.security import utc
 from app.platform.budget_protocol import BudgetInput, ReservationInput, SettlementInput
 import hashlib
 import json
+from app.platform import quota_service
 
 
 def signature(value):
@@ -301,6 +302,7 @@ def reserve(session, task, attempt_id, body: ReservationInput):
     executor = session.get(Executor, task.executor_id)
     if executor.mode not in {"api", "agent"} or executor.agent_protocol == "offline_v1":
         raise HTTPException(409, "人工、本地校验与离线 Agent 不使用外部调用预算")
+    quota = quota_service.for_executor(session, task.executor_id, lock=True)
     budget = lock_budget(session, task.work_id)
     previous = session.scalar(
         select(BudgetReservation).where(
@@ -321,6 +323,7 @@ def reserve(session, task, attempt_id, body: ReservationInput):
     check_task_limit(
         session, task, body.reserved_microunits, body.reserved_tokens, body.currency
     )
+    quota_service.check(session, quota, body.reserved_tokens)
     if (
         budget.spent_microunits + budget.held_microunits + body.reserved_microunits
         > budget.limit_microunits
@@ -337,6 +340,7 @@ def reserve(session, task, attempt_id, body: ReservationInput):
     )
     session.add(item)
     session.flush()
+    quota_service.book(session, quota, item)
     budget.held_microunits += item.reserved_microunits
     budget.held_tokens += item.reserved_tokens
     budget.version += 1
@@ -346,6 +350,7 @@ def reserve(session, task, attempt_id, body: ReservationInput):
 
 def dispatch(session, task, reservation_id):
     """Persist BEFORE network I/O; True authorizes exactly this first dispatch only."""
+    quota = quota_service.for_executor(session, task.executor_id, lock=True)
     budget = lock_budget(session, task.work_id)
     item = session.get(BudgetReservation, reservation_id, populate_existing=True)
     if item is None or item.task_id != task.id:
@@ -356,6 +361,7 @@ def dispatch(session, task, reservation_id):
     if unknown_count(session, task.work_id):
         raise HTTPException(409, "作品存在待对账调用，不能发起新调用")
     check_task_limit(session, task, currency=item.currency)
+    quota_service.check_dispatch(session, quota, item)
     if (
         budget.spent_microunits + budget.held_microunits > budget.limit_microunits
         or budget.spent_tokens + budget.held_tokens > budget.limit_tokens
@@ -363,6 +369,8 @@ def dispatch(session, task, reservation_id):
         raise HTTPException(409, "预算已降低或发生超支，不能发起调用")
     item.state, item.version = "DISPATCHED", item.version + 1
     budget.version += 1
+    if quota:
+        quota.version += 1
     record(session, budget, "DISPATCHED", item)
     return True
 
@@ -379,6 +387,7 @@ def abandon_attempt(session, task, attempt_id):
     )
     if not items:
         return
+    quota = quota_service.for_executor(session, task.executor_id, lock=True)
     budget = lock_budget(session, task.work_id)
     for item in items:
         if item.state == "RESERVED":
@@ -389,6 +398,8 @@ def abandon_attempt(session, task, attempt_id):
             item.state = "UNKNOWN"
         item.version += 1
         budget.version += 1
+        if quota:
+            quota.version += 1
         record(session, budget, item.state, item)
 
 
@@ -402,6 +413,7 @@ def settle(
     expected_version=None,
 ):
     """May accept late usage evidence, but never modifies task/candidate success."""
+    quota = quota_service.for_executor(session, task.executor_id, lock=True)
     budget = lock_budget(session, task.work_id)
     item = session.get(BudgetReservation, reservation_id, populate_existing=True)
     if item is None or item.task_id != task.id:
@@ -438,6 +450,8 @@ def settle(
     )
     item.receipt_key, item.settlement_hash = body.receipt_key, fingerprint
     item.state, item.version = "SETTLED", item.version + 1
+    if quota:
+        quota.version += 1
     record(
         session,
         budget,

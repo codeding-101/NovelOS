@@ -90,6 +90,7 @@ const reasons: Record<string, string> = {
   CURRENCY_MISMATCH: "与预算币种不一致",
   MONEY_LIMIT: "费用额度不足",
   TOKEN_LIMIT: "token 额度不足",
+  MONTHLY_QUOTA_EXCEEDED: "共享月度配额不足或有待对账用量",
 };
 const empty: Form = {
   apiProfile: false,

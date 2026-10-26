@@ -448,3 +448,38 @@ class AgentTaskGrant(PlatformBase):
     )
     task_id: Mapped[str] = mapped_column(ForeignKey("creative_tasks.id"), index=True)
     executor_id: Mapped[str] = mapped_column(ForeignKey("executors.id"))
+
+
+class MonthlyQuota(PlatformBase):
+    __tablename__ = "monthly_quotas"
+    __table_args__ = (
+        CheckConstraint(
+            "limit_tokens >= 0 AND limit_tokens <= 1000000000000", name="quota_limit"
+        ),
+        CheckConstraint("timezone IN ('UTC','Asia/Shanghai')", name="quota_timezone"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    name: Mapped[str] = mapped_column(String(128))
+    timezone: Mapped[str] = mapped_column(String(32))
+    limit_tokens: Mapped[int] = mapped_column(BigInteger)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    request_key: Mapped[str] = mapped_column(String(128), unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class QuotaBinding(PlatformBase):
+    __tablename__ = "quota_bindings"
+    executor_id: Mapped[str] = mapped_column(
+        ForeignKey("executors.id"), primary_key=True
+    )
+    quota_id: Mapped[str] = mapped_column(ForeignKey("monthly_quotas.id"), index=True)
+
+
+class QuotaBooking(PlatformBase):
+    __tablename__ = "quota_bookings"
+    reservation_id: Mapped[str] = mapped_column(
+        ForeignKey("budget_reservations.id"), primary_key=True
+    )
+    quota_id: Mapped[str] = mapped_column(ForeignKey("monthly_quotas.id"), index=True)
+    period: Mapped[str] = mapped_column(String(7), index=True)

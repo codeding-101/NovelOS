@@ -60,4 +60,6 @@
 
 阶段证据见 [执行记录](../planning/execution-status.md)，决策见 [ADR 0005](../decisions/0005-work-budgets.md)。
 
+后续 schema `0010_monthly_quotas` 已交付 [共享月度配额基础](monthly-quotas.md)：多个执行者跨作品共用自然月 token 限额；UNKNOWN 跨月保持占用，须在本页对账。当前仍未核验或接入供应商实际免费计量与账单，作品累计预算不能替代供应商账户余额。
+
 M3 后续已增加 [本机模型协议联调](model-api-rehearsal.md)：按冻结声明价格及整个上下文额度预留，解析模拟响应的 token，与候选保存原子结算。测试中可以验证真实账本事务，但响应和费用都来自明确标识的本机模拟服务，不代表已获得供应商账单或授权公网消费。

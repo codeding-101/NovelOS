@@ -325,7 +325,7 @@ def test_upgrade_keeps_legacy_model_blocked_until_budget_is_set(
     task_id = identifier()
     with db.sessions.begin() as session:
         decision = executor_service.evaluate(
-            session, body.work_id, body.task_type, automatic=False
+            session, body.work_id, body.task_type, automatic=False, check_quotas=False
         )
         session.execute(
             insert(CreativeTask.__table__).values(
@@ -352,7 +352,7 @@ def test_upgrade_keeps_legacy_model_blocked_until_budget_is_set(
             )
         )
     db.upgrade()
-    assert db.require_current() == "0009_task_budgets"
+    assert db.require_current() == "0010_monthly_quotas"
     assert tasks.create_task(db, body) == task_id
     assert summary(db, task_id)["configured"] is False
     runtime.run_model(db, settings)

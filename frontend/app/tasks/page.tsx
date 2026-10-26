@@ -123,6 +123,7 @@ const reasons: Record<string, string> = {
   MODEL_PREFLIGHT_FAILED:
     "模型协议检查未通过，未发送请求；请核对配置、凭证和预算",
   TASK_BUDGET_EXCEEDED: "任务累计预算不足或尚未配置，请核对任务预算后恢复",
+  MONTHLY_QUOTA_EXCEEDED: "共享月度配额不足或有待对账用量",
 };
 
 async function allPages<T>(path: string) {

@@ -1,6 +1,6 @@
 # 模型 API 配置与本机协议验收
 
-适用版本：模型协议自 schema `0008_model_api` 引入，当前 schema `0009_task_budgets`。本工作包完成 Chat Completions 文本协议、预算预留、用量解析与候选保存的本机联调，**未开放公网模型调用或真实付费执行**。
+适用版本：模型协议自 schema `0008_model_api` 引入，当前 schema `0010_monthly_quotas`。本工作包完成 Chat Completions 文本协议、预算预留、用量解析与候选保存的本机联调，**未开放公网模型调用或真实付费执行**。
 
 ## 配置入口
 
@@ -52,3 +52,5 @@
 `scripts/model_fixture.py` 仅监听本机临时端口，返回标注为模拟的固定文本，不调用模型。`scripts/platform_smoke.py` 在临时库验证网页配置、Worker、候选及预算展示；`backend/tests/test_platform_models.py` 覆盖双库并发、事务回滚和故障。执行方法见 [部署指南](platform-setup.md)。
 
 用户已明确要求继续开发、暂不开放真实调用，当前保持此边界。后续如变更授权，仍须完成公网目标限制、TLS／DNS 与网络边界、供应商实际计量及有限真实联调。当前 M3、M1 容器部署验收和后续朱雀门禁均未整体完成。参见 [执行记录](../planning/execution-status.md) 与 [ADR 0008](../decisions/0008-model-api-rehearsal.md)。
+
+schema `0010_monthly_quotas` 进一步增加 [共享月度配额](monthly-quotas.md)。模型执行者可在首次预留前绑定；路由、领取、恢复、预留及发送均受限，跨作品共享用量。此功能仍只通过本机模拟验收，不获取供应商余额。

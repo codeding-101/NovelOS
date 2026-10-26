@@ -19,6 +19,7 @@ from app.platform.models import (
     now,
 )
 from app.platform.security import CredentialVault
+from app.platform import quota_service
 from app.platform.task_protocol import ResultEnvelope, Usage
 from app.platform.budget_protocol import ReservationInput, SettlementInput
 
@@ -244,6 +245,8 @@ def execute(db, settings, task_id, executor_id):
             envelope["attempt_id"],
             "BUDGET_UNCERTAIN"
             if dispatched
+            else "MONTHLY_QUOTA_EXCEEDED"
+            if isinstance(exc, quota_service.QuotaExceeded)
             else "TASK_BUDGET_EXCEEDED"
             if isinstance(exc, budgets.TaskBudgetExceeded)
             else "MODEL_PREFLIGHT_FAILED",

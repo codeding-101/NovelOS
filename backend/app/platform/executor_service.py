@@ -14,7 +14,7 @@ from app.platform.models import (
     Work,
     WorkBudget,
 )
-from app.platform import budget_service
+from app.platform import budget_service, quota_service
 
 LOCAL_MODES = {"human", "local_test"}
 FIELDS = (
@@ -244,7 +244,14 @@ def model_test_allowed(item, test_mode):
 
 
 def evaluate(
-    session, work_id, task_type, input_tokens=0, max_output_tokens=1, *, automatic=True
+    session,
+    work_id,
+    task_type,
+    input_tokens=0,
+    max_output_tokens=1,
+    *,
+    automatic=True,
+    check_quotas=True,
 ):
     rules = policy(session, work_id)
     budget = session.get(WorkBudget, work_id, populate_existing=True)
@@ -341,6 +348,15 @@ def evaluate(
                     > budget.limit_tokens
                 ):
                     reasons.append("TOKEN_LIMIT")
+        if check_quotas and model_api(item):
+            try:
+                quota_service.check(
+                    session,
+                    quota_service.for_executor(session, item.id),
+                    planned_input + planned_output,
+                )
+            except quota_service.QuotaExceeded:
+                reasons.append("MONTHLY_QUOTA_EXCEEDED")
         candidates.append(
             {
                 "id": item.id,
@@ -438,6 +454,7 @@ def ready_for_claim(session, task):
         task.task_type,
         original.snapshot["input_tokens"] if original else 0,
         automatic=original is not None and original.requested_executor_id == "auto",
+        check_quotas=False,
     )
     candidate = next(
         (row for row in decision["candidates"] if row["id"] == task.executor_id), None

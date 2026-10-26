@@ -699,7 +699,27 @@ def main() -> None:
                 page.screenshot(
                     path=str(output / "model-config-desktop.png"), full_page=True
                 )
-                page.get_by_role("link", name="进入任务中心", exact=True).click()
+                page.goto(origin + "/quotas")
+                page.get_by_label("配额名称", exact=True).fill("本机模拟共享配额")
+                page.get_by_label("月度 token 上限", exact=True).fill("50000")
+                page.get_by_role("button", name="创建月度配额", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("月度配额已创建")
+                page.get_by_label("待绑定执行者", exact=True).select_option(
+                    label="模型协议模拟验收"
+                )
+                page.get_by_role("button", name="绑定执行者", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("执行者已绑定")
+                page.reload()
+                page.get_by_label("当前月度配额", exact=True).select_option(
+                    label="本机模拟共享配额"
+                )
+                expect(
+                    page.get_by_label("调整月度 token 上限", exact=True)
+                ).to_have_value("50000")
+                expect(page.get_by_role("region", name="共享执行者")).to_contain_text(
+                    "模型协议模拟验收"
+                )
+                page.goto(origin + "/tasks")
                 page.get_by_label("当前作品").select_option(label="浏览器作品验证")
                 page.get_by_label("输入版本").select_option(label="起风 · v4")
                 page.get_by_label("执行者", exact=True).select_option(
@@ -818,6 +838,67 @@ def main() -> None:
                 assert page.evaluate(
                     "document.documentElement.scrollWidth <= window.innerWidth"
                 )
+                page.goto(origin + "/quotas")
+                page.get_by_label("当前月度配额", exact=True).select_option(
+                    label="本机模拟共享配额"
+                )
+                expect(page.get_by_role("region", name="月度配额概况")).to_contain_text(
+                    "已结算 360 token"
+                )
+                expect(page.get_by_role("region", name="月度调用记录")).to_contain_text(
+                    "结算 120 token"
+                )
+                quota_second = context.new_page()
+                quota_second.goto(origin + "/quotas")
+                quota_second.get_by_label("当前月度配额", exact=True).select_option(
+                    label="本机模拟共享配额"
+                )
+                quota_second.get_by_label("调整月度 token 上限", exact=True).fill(
+                    "90000"
+                )
+                page.get_by_label("调整月度 token 上限", exact=True).fill("360")
+                page.get_by_role("button", name="保存配额上限", exact=True).click()
+                expect(page.get_by_role("region", name="月度配额概况")).to_contain_text(
+                    "可用 0 token"
+                )
+                quota_second.get_by_role(
+                    "button", name="保存配额上限", exact=True
+                ).click()
+                expect(
+                    quota_second.get_by_role("alert").filter(has_text="配额版本已变化")
+                ).to_be_visible()
+                expect(
+                    quota_second.get_by_label("调整月度 token 上限", exact=True)
+                ).to_have_value("90000")
+                quota_second.close()
+                page.goto(origin + "/tasks")
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("输入版本").select_option(label="起风 · v4")
+                page.get_by_label("执行者", exact=True).select_option(
+                    label="模型协议模拟验收"
+                )
+                page.get_by_label("任务目标").fill("月度配额阻断验收")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                expect(
+                    page.get_by_role("alert").filter(has_text="执行者不符合当前规则")
+                ).to_be_visible()
+                assert len(model.calls) == 3
+                page.goto(origin + "/quotas")
+                page.get_by_label("当前月度配额", exact=True).select_option(
+                    label="本机模拟共享配额"
+                )
+                page.get_by_label("调整月度 token 上限", exact=True).fill("50000")
+                page.get_by_role("button", name="保存配额上限", exact=True).click()
+                expect(page.get_by_role("region", name="月度配额概况")).to_contain_text(
+                    "可用 49640 token"
+                )
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(path=str(output / "quotas-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "quotas-mobile.png"), full_page=True)
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
                 page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
@@ -876,6 +957,11 @@ def main() -> None:
                             "task_budget_conflict_preserves_input",
                             "task_budget_counts_usage_across_attempts",
                             "task_budget_mobile_no_horizontal_overflow",
+                            "monthly_quota_creation_binding_persists",
+                            "monthly_quota_aggregates_attempts",
+                            "monthly_quota_conflict_preserves_input",
+                            "monthly_quota_exhaustion_blocks_new_task",
+                            "monthly_quota_mobile_no_horizontal_overflow",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

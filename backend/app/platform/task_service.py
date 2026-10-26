@@ -301,6 +301,8 @@ def task_envelope(session, task, attempt, token):
 
 
 def try_claim(db, task_id, executor_id, agent=None, *, provider=False):
+    from app.platform import quota_service
+
     with db.sessions.begin() as session:
         task = locked_task(session, task_id)
         if agent is not None:
@@ -353,6 +355,12 @@ def try_claim(db, task_id, executor_id, agent=None, *, provider=False):
             budget_service.check_next_task_call(session, task)
         except budget_service.TaskBudgetExceeded:
             transition(task, "PAUSED", "TASK_BUDGET_EXCEEDED")
+            event(session, task, "blocked", reason=task.reason)
+            return None
+        try:
+            quota_service.check_next_call(session, task)
+        except quota_service.QuotaExceeded:
+            transition(task, "PAUSED", "MONTHLY_QUOTA_EXCEEDED")
             event(session, task, "blocked", reason=task.reason)
             return None
         if budget_service.unknown_count(session, task.work_id, task.id):
@@ -625,9 +633,12 @@ def control(db, task_id, action, expected_version):
         if task.state in TERMINAL:
             raise HTTPException(409, "任务已经结束")
         if action == "resume":
+            from app.platform import quota_service
+
             if not executor_service.ready_for_claim(session, task):
                 raise HTTPException(409, "执行者或路由规则仍阻止执行，请先核对设置")
             budget_service.check_next_task_call(session, task)
+            quota_service.check_next_call(session, task)
             if budget_service.unknown_count(session, task.work_id, task.id):
                 raise HTTPException(409, "此任务仍有未知费用，请先核对账目再恢复")
             if (
