@@ -4,11 +4,13 @@
 
 项目正在按新需求分阶段重组。已建立登录、持久会话、加密凭证和显式迁移；作品空间支持草稿编辑、不可变版本、比较恢复、原稿导入、附件、版本引用、文字检索与带校验清单的导出。后台可重试文件同步和索引重建，旧 SQLite 可通过管理命令只读导入独立新库。任务中心支持人工、本地校验与离线 Agent、依赖、检查点、有限重试和候选隔离；预算中心提供累计费用／token 上限、预留、结算去重与未知费用对账。执行者设置支持能力声明、作品选择规则和预算检查；离线 Agent 使用任务专属令牌领取与回报，配有可恢复参考客户端。模型 API 配置、预算预留和用量解析已通过本机模拟服务联调。真实公网模型调用、付费 Agent 及朱雀检测尚待后续工作包；当前不调用外部模型、不授予正文定稿状态，容器部署验收也尚未完成。
 
-## 文档
-
 模型任务已支持跨尝试累计的费用与 token 上限，与作品总预算共同生效；额度不足会阻止继续执行，网页可调整并手动恢复。按用户当前要求，真实模型调用继续保持关闭。
 
 月度配额页面支持多个模型执行者跨作品共享 token 上限，提供固定月界、未知用量占用、预警及配置历史。这是本地额度控制，不代表已接入朱雀或获得供应商余额。
+
+记忆与审核页面支持带来源的人物、关系、世界规则、事件、伏笔和承诺提案；用户批准后进入正式记忆，保留历史与审核依据。来源更新、正式版本变化或提案过期会阻止旧提案直接生效，批准记忆不改变正文定稿状态。
+
+## 文档
 
 - [需求与开发规划](docs/planning/README.md)
 - [当前执行记录和验收结果](docs/planning/execution-status.md)
@@ -31,6 +33,8 @@
 - [任务累计预算决策](docs/decisions/0009-task-budgets.md)
 - [共享月度配额操作指南](docs/operations/monthly-quotas.md)
 - [月度配额与调用归属决策](docs/decisions/0010-monthly-quotas.md)
+- [记忆提案与人工审核](docs/operations/memory-review.md)
+- [记忆受控生效决策](docs/decisions/0011-memory-review.md)
 - [旧版使用说明归档](docs/legacy/README.md)
 
 ## 服务器部署
@@ -60,7 +64,7 @@ cd backend
 python -m pip install -r requirements-dev.txt
 python -m pytest
 # 配置隔离的 NOVELOS_TEST_POSTGRES_URL 后，同一组用例也会验证真实 PostgreSQL。
-python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py tests/test_platform_models.py tests/test_platform_task_budgets.py tests/test_platform_quotas.py -v
+python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py tests/test_platform_models.py tests/test_platform_task_budgets.py tests/test_platform_quotas.py tests/test_platform_memory.py -v
 ```
 
 前端构建：在 `frontend` 执行 `npm ci` 和 `npm run build`。浏览器验收与容器冒烟见部署指南和 GitHub Actions 配置。真实模型测试默认跳过；模拟结果不能替代朱雀检测证据。

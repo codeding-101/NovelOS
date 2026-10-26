@@ -38,6 +38,7 @@ from app.platform.asset_tools import router as asset_tools_router
 from app.platform.tasks import router as tasks_router
 from app.platform.budgets import router as budgets_router
 from app.platform.quotas import router as quotas_router
+from app.platform.memory import router as memory_router
 from app.platform.executors import router as executors_router
 from app.platform.agents import (
     router as agent_router,
@@ -97,6 +98,7 @@ def create_app(
     app.include_router(tasks_router)
     app.include_router(budgets_router)
     app.include_router(quotas_router)
+    app.include_router(memory_router)
     app.include_router(executors_router)
     app.include_router(agent_router)
     app.include_router(agent_owner_router)

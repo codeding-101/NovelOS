@@ -69,7 +69,7 @@ def test_budget_upgrade_preserves_existing_task(platform_database):
             )
         )
     db.upgrade()
-    assert db.require_current() == "0010_monthly_quotas"
+    assert db.require_current() == "0011_memory_review"
     with db.sessions() as session:
         task = session.get(CreativeTask, task_id)
         assert (

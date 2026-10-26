@@ -483,3 +483,65 @@ class QuotaBooking(PlatformBase):
     )
     quota_id: Mapped[str] = mapped_column(ForeignKey("monthly_quotas.id"), index=True)
     period: Mapped[str] = mapped_column(String(7), index=True)
+
+
+class MemoryProposal(PlatformBase):
+    __tablename__ = "memory_proposals"
+    __table_args__ = (
+        UniqueConstraint("work_id", "request_key", name="memory_request_key"),
+        CheckConstraint(
+            "kind IN ('character','relationship','world_rule','event','foreshadow','promise')",
+            name="memory_kind",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    entry_key: Mapped[str] = mapped_column(String(128))
+    kind: Mapped[str] = mapped_column(String(24))
+    title: Mapped[str] = mapped_column(String(256))
+    content: Mapped[str] = mapped_column(Text)
+    base_proposal_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memory_proposals.id")
+    )
+    submission_id: Mapped[str | None] = mapped_column(ForeignKey("task_submissions.id"))
+    request_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MemorySource(PlatformBase):
+    __tablename__ = "memory_sources"
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_proposals.id"), primary_key=True
+    )
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("asset_revisions.id"), primary_key=True
+    )
+
+
+class MemoryDecision(PlatformBase):
+    __tablename__ = "memory_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('approved','rejected')", name="memory_decision_outcome"
+        ),
+    )
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_proposals.id"), primary_key=True
+    )
+    outcome: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    actor: Mapped[str] = mapped_column(String(32), default="owner")
+    version: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MemoryEntry(PlatformBase):
+    __tablename__ = "memory_entries"
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), primary_key=True)
+    entry_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_proposals.id"), unique=True
+    )
+    version: Mapped[int] = mapped_column(Integer)

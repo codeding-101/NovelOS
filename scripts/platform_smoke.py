@@ -899,6 +899,123 @@ def main() -> None:
                 assert page.evaluate(
                     "document.documentElement.scrollWidth <= window.innerWidth"
                 )
+                page.goto(origin + "/memory")
+                page.get_by_label("当前作品", exact=True).select_option(
+                    label="浏览器作品验证"
+                )
+                page.get_by_label("记忆标识", exact=True).fill("人物-林舟")
+                page.get_by_label("记忆标题", exact=True).fill("林舟身份")
+                page.get_by_label("记忆内容", exact=True).fill("林舟是一名船医。")
+                page.get_by_label("记忆来源版本", exact=True).select_option(
+                    label="起风 · v4"
+                )
+                page.get_by_role("button", name="提交记忆提案", exact=True).click()
+                expect(page.get_by_role("status")).to_contain_text("候选记忆已保存")
+                canonical = page.get_by_role("region", name="正式记忆", exact=True)
+                expect(canonical).to_contain_text("没有符合条件的正式记忆")
+                review = page.get_by_role("region", name="提案审核详情")
+                review.get_by_role(
+                    "button", name="查看来源 起风 v4", exact=True
+                ).click()
+                expect(page.get_by_role("region", name="来源原文")).to_contain_text(
+                    "山风"
+                )
+                review.get_by_label("审核说明", exact=True).fill("已核对人物身份及来源")
+                review.get_by_label("已核对提案、来源及修改前内容", exact=False).check()
+                review.get_by_role("button", name="批准并生效", exact=True).click()
+                expect(canonical).to_contain_text("林舟是一名船医。")
+                canonical.get_by_role(
+                    "button", name="提出修改 林舟身份", exact=True
+                ).click()
+                page.get_by_label("记忆内容", exact=True).fill(
+                    "林舟曾任船医，现为领航员。"
+                )
+                page.get_by_role("button", name="提交记忆提案", exact=True).click()
+                expect(review).to_contain_text("修改前")
+                other_review = context.new_page()
+                other_review.goto(origin + "/memory")
+                other_review.get_by_label("当前作品", exact=True).select_option(
+                    label="浏览器作品验证"
+                )
+                other_review.get_by_role(
+                    "button", name="审核提案 林舟身份", exact=True
+                ).click()
+                other_review.get_by_label("审核说明", exact=True).fill(
+                    "另一页面尚未提交的意见"
+                )
+                other_review.get_by_label(
+                    "已核对提案、来源及修改前内容", exact=False
+                ).check()
+                review.get_by_label("审核说明", exact=True).fill("已核对身份变化")
+                review.get_by_label("已核对提案、来源及修改前内容", exact=False).check()
+                review.get_by_role("button", name="批准并生效", exact=True).click()
+                expect(canonical).to_contain_text("v2")
+                other_review.get_by_role(
+                    "button", name="批准并生效", exact=True
+                ).click()
+                expect(
+                    other_review.get_by_role("alert").filter(has_text="已有审核决定")
+                ).to_be_visible()
+                expect(other_review.get_by_label("审核说明", exact=True)).to_have_value(
+                    "另一页面尚未提交的意见"
+                )
+                other_review.close()
+                page.reload()
+                page.get_by_label("当前作品", exact=True).select_option(
+                    label="浏览器作品验证"
+                )
+                expect(canonical).to_contain_text("林舟曾任船医，现为领航员。")
+                canonical.get_by_role(
+                    "button", name="版本历史 林舟身份", exact=True
+                ).click()
+                expect(page.get_by_role("region", name="记忆版本历史")).to_contain_text(
+                    "历史版本"
+                )
+                page.get_by_label("记忆标识", exact=True).fill("事件-风暴")
+                page.get_by_label("记忆标题", exact=True).fill("待核对风暴")
+                page.get_by_label("记忆类型", exact=True).select_option("event")
+                page.get_by_label("记忆内容", exact=True).fill("风暴发生在夜间。")
+                page.get_by_label("记忆来源版本", exact=True).select_option(
+                    label="起风 · v4"
+                )
+                page.get_by_role("button", name="提交记忆提案", exact=True).click()
+                expect(review).to_contain_text("待核对风暴")
+                source_editor = context.new_page()
+                source_editor.goto(origin + "/works")
+                source_editor.get_by_label("当前作品").select_option(
+                    label="浏览器作品验证"
+                )
+                source_editor.get_by_role(
+                    "button", name="章节 起风"
+                ).click()
+                source_editor.get_by_label("正文", exact=True).fill(
+                    "山风拂过旧屋，风暴在清晨到来。"
+                )
+                source_editor.get_by_role(
+                    "button", name="保存新版本", exact=True
+                ).click()
+                expect(
+                    source_editor.get_by_role("status").filter(has_text="已保存版本 5")
+                ).to_be_visible()
+                source_editor.close()
+                review.get_by_role("button", name="刷新提案状态", exact=True).click()
+                expect(review).to_contain_text("来源已有新版本")
+                expect(
+                    review.get_by_role("button", name="批准并生效", exact=True)
+                ).to_be_disabled()
+                review.get_by_label("审核说明", exact=True).fill(
+                    "来源已变化，需要重新核对"
+                )
+                review.get_by_role("button", name="驳回提案", exact=True).click()
+                expect(review).to_contain_text("已驳回")
+                expect(canonical).to_contain_text("来源已有新版本，需复查")
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(path=str(output / "memory-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "memory-mobile.png"), full_page=True)
+                assert page.evaluate(
+                    "document.documentElement.scrollWidth <= window.innerWidth"
+                )
                 page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
@@ -962,6 +1079,11 @@ def main() -> None:
                             "monthly_quota_conflict_preserves_input",
                             "monthly_quota_exhaustion_blocks_new_task",
                             "monthly_quota_mobile_no_horizontal_overflow",
+                            "memory_candidate_excluded_until_owner_approval",
+                            "memory_source_preview_and_replacement_history",
+                            "memory_concurrent_decision_preserves_input",
+                            "memory_source_change_blocks_approval",
+                            "memory_mobile_no_horizontal_overflow",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

@@ -90,7 +90,7 @@ cd backend
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py tests\test_platform_works.py tests\test_platform_delivery.py tests\test_platform_tasks.py tests\test_platform_budgets.py tests\test_platform_executors.py tests\test_platform_agents.py tests\test_platform_models.py tests\test_platform_task_budgets.py tests\test_platform_quotas.py -v
+.\.venv\Scripts\python.exe -m pytest tests\test_platform_foundation.py tests\test_platform_works.py tests\test_platform_delivery.py tests\test_platform_tasks.py tests\test_platform_budgets.py tests\test_platform_executors.py tests\test_platform_agents.py tests\test_platform_models.py tests\test_platform_task_budgets.py tests\test_platform_quotas.py tests\test_platform_memory.py -v
 ```
 
 默认测试 SQLite；设置 `NOVELOS_TEST_POSTGRES_URL` 后也运行 PostgreSQL 用例。该地址必须指向隔离测试数据库；每个 PostgreSQL 用例创建唯一 schema，结束时只删除自己的 schema。覆盖登录保护、持久限流、CSRF、会话过期和撤销、凭证加密、不泄露校验输入、未知迁移版本、重复初始化和只读旧库盘点。
@@ -108,7 +108,7 @@ Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PA
 
 升级前保留数据库及主密钥备份；版本变更通过 `python -m app.platform.cli upgrade` 或 migrate 服务执行。`python -m app.platform.cli check` 仅检查版本。未知版本和未受管理的非空库会被拒绝，不能用强制 stamp 掩盖不兼容。
 
-当前 schema 版本为 `0010_monthly_quotas`；本次迁移新增共享月度配额、执行者绑定和不可变调用月份归属表。历史执行者不自动绑定，已有调用不补造月度归属；原账本、任务、正文与幂等键保持不变。此前的历史模型任务仍须补齐任务预算才能恢复。公网模型调用保持关闭。API 与 Worker 都须升级后再启动。迁移不提供破坏性降级，恢复旧应用版本须使用升级前数据库备份。操作见 [共享月度配额](monthly-quotas.md) 与 [任务累计预算](task-budgets.md)。
+当前 schema 版本为 `0011_memory_review`；本次迁移新增记忆提案、来源绑定、审核决定和正式记忆指针表。旧正文与任务结果不会自动成为正式记忆，旧 CANON／COMPLETED 也不自动升级；原预算、调用与资产保持不变。此前历史模型任务仍须补齐任务预算才能恢复。公网模型调用保持关闭。API 与 Worker 都须升级后再启动。迁移不提供破坏性降级，恢复旧应用版本须使用升级前数据库备份。操作见 [记忆提案与人工审核](memory-review.md)。
 
 当前尚无完整生产备份调度和异机恢复工具。M2 的资产与派生副本恢复、M3 首个工作包的本地任务恢复已通过本地验收；生产使用仍需完成部署验证、真实执行者与预算故障恢复、M9 备份恢复验收。M0 旧库快照脚本不能证明 PostgreSQL 全平台灾难恢复已经覆盖。
 

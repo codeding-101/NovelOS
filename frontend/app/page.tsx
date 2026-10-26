@@ -227,6 +227,9 @@ export default function Page() {
             <p>
               <a href="/quotas">管理月度配额 →</a>
             </p>
+            <p>
+              <a href="/memory">记忆与审核 →</a>
+            </p>
           </section>
           <div className={styles.cards}>
             <section className={styles.card}>
