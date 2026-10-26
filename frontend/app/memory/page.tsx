@@ -4,6 +4,7 @@ import { platformRequest } from "@/lib/platform";
 import shell from "../platform.module.css";
 import styles from "../budgets/budgets.module.css";
 import local from "./memory.module.css";
+import { StateFields, StateSummary, StoryState, Timeline } from "./StoryState";
 
 type Source = {
   revision_id: string;
@@ -29,6 +30,8 @@ type Proposal = {
   sources: Source[];
   expires_at: string;
   decision_reason: string | null;
+  story_state: StoryState | null;
+  story_conflicts: { id: string; entry_key: string; title: string }[];
 };
 type Asset = {
   id: string;
@@ -53,6 +56,7 @@ const reasons: Record<string, string> = {
   MEMORY_CHANGED: "正式记忆已更新",
   SOURCE_CHANGED: "来源已有新版本",
   PROPOSAL_EXPIRED: "提案已过期",
+  STORY_STATE_OVERLAP: "同一对象和属性的故事区间重叠",
 };
 async function all<T>(path: string): Promise<T[]> {
   const result: T[] = [];
@@ -82,6 +86,8 @@ export default function MemoryPage() {
   const [kind, setKind] = useState("character");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [storyState, setStoryState] = useState<StoryState | null>(null);
+  const [timelineEpoch, setTimelineEpoch] = useState(0);
   const [sources, setSources] = useState<string[]>([]);
   const [base, setBase] = useState<string | null>(null);
   const [submission, setSubmission] = useState("");
@@ -98,7 +104,9 @@ export default function MemoryPage() {
   const [notice, setNotice] = useState("");
   const requestKey = useRef("");
   const busy = pending || expired;
-  const dirty = Boolean(key || title || content || reason || submission);
+  const dirty = Boolean(
+    key || title || content || reason || submission || storyState,
+  );
   const prefix = `/works/${workId}/memory`;
   function mayLeave() {
     return !dirty || window.confirm("尚未提交的输入会被清除，继续？");
@@ -107,6 +115,7 @@ export default function MemoryPage() {
     setKey("");
     setTitle("");
     setContent("");
+    setStoryState(null);
     setSources([]);
     setBase(null);
     setSubmission("");
@@ -168,6 +177,7 @@ export default function MemoryPage() {
     setOffset(start);
     setCanonOffset(canonicalStart);
     setAppliedQuery(search);
+    setTimelineEpoch((value) => value + 1);
   }
   async function selectProposal(id: string) {
     const selected = await platformRequest<Proposal>(
@@ -197,6 +207,7 @@ export default function MemoryPage() {
             kind,
             title,
             content,
+            story_state: storyState,
             source_revision_ids: sources,
             base_proposal_id: base,
             submission_id: submission || null,
@@ -240,7 +251,7 @@ export default function MemoryPage() {
         候选与正式记忆分开保存。当前所有记忆变更均须用户审核；来源变更、正式版本变化或提案过期时不能直接生效。
       </p>
       <p>
-        本阶段提供有来源的文字记忆，不做自动事实抽取、故事时点推断或正文定稿。
+        可为记忆填写结构化故事状态及生效区间；时点由用户约定，不自动推断或抽取。
       </p>
       {error && (
         <p role="alert" className={styles.error}>
@@ -344,6 +355,11 @@ export default function MemoryPage() {
                 onChange={(e) => edited(() => setContent(e.target.value))}
               />
             </label>
+            <StateFields
+              state={storyState}
+              disabled={busy}
+              onChange={(value) => edited(() => setStoryState(value))}
+            />
             <label>
               来源版本（可多选，最多 20 项）
               <select
@@ -440,6 +456,7 @@ export default function MemoryPage() {
                   {kinds[item.kind]} · {item.entry_key}
                 </p>
                 <pre className={local.text}>{item.content}</pre>
+                <StateSummary state={item.story_state} />
                 {item.source_changed && (
                   <p>来源已有新版本，需复查；当前记忆保留原审批及证据。</p>
                 )}
@@ -454,6 +471,7 @@ export default function MemoryPage() {
                         setKind(item.kind);
                         setTitle(item.title);
                         setContent(item.content || "");
+                        setStoryState(item.story_state);
                         setSources(
                           item.sources
                             .filter((s) => s.current)
@@ -530,6 +548,11 @@ export default function MemoryPage() {
               </button>
             </div>
           </section>
+          <Timeline
+            key={`${workId}:${timelineEpoch}`}
+            workId={workId}
+            disabled={busy}
+          />
           {!!history.length && (
             <section className={styles.panel} aria-label="记忆版本历史">
               <h2>最近 100 个已批准版本</h2>
@@ -540,6 +563,7 @@ export default function MemoryPage() {
                     {item.is_current ? "当前版本" : "历史版本"}
                   </h3>
                   <pre className={local.text}>{item.content}</pre>
+                  <StateSummary state={item.story_state} />
                   <p>审核说明：{item.decision_reason}</p>
                 </div>
               ))}
@@ -617,10 +641,20 @@ export default function MemoryPage() {
                 <>
                   <h3>修改前</h3>
                   <pre className={local.text}>{before.content}</pre>
+                  <StateSummary state={before.story_state} />
                 </>
               )}
               <h3>提案内容</h3>
               <pre className={local.text}>{detail.content}</pre>
+              <StateSummary state={detail.story_state} />
+              {!!detail.story_conflicts.length && (
+                <p className={local.stateSummary}>
+                  重叠条目（最多显示 20 项）：
+                  {detail.story_conflicts
+                    .map((row) => `${row.title}（${row.entry_key}）`)
+                    .join("、")}
+                </p>
+              )}
               {!!detail.blockers.length && (
                 <p role="status">
                   不能批准：{detail.blockers.map((x) => reasons[x]).join("、")}

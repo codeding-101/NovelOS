@@ -906,6 +906,14 @@ def main() -> None:
                 page.get_by_label("记忆标识", exact=True).fill("人物-林舟")
                 page.get_by_label("记忆标题", exact=True).fill("林舟身份")
                 page.get_by_label("记忆内容", exact=True).fill("林舟是一名船医。")
+                page.get_by_label("指定故事状态与生效区间", exact=True).check()
+                page.get_by_label("对象标识", exact=True).fill("人物-林舟")
+                page.get_by_label("状态属性", exact=True).fill("职业")
+                page.get_by_label("状态取值", exact=True).fill("船医")
+                page.get_by_label("开始时点", exact=True).fill("10")
+                page.get_by_label("结束时点", exact=True).fill("20")
+                page.screenshot(path=str(output / "story-form-mobile.png"), full_page=True)
+                assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                 page.get_by_label("记忆来源版本", exact=True).select_option(
                     label="起风 · v4"
                 )
@@ -913,6 +921,10 @@ def main() -> None:
                 expect(page.get_by_role("status")).to_contain_text("候选记忆已保存")
                 canonical = page.get_by_role("region", name="正式记忆", exact=True)
                 expect(canonical).to_contain_text("没有符合条件的正式记忆")
+                timeline = page.get_by_role("region", name="故事时点查询", exact=True)
+                timeline.get_by_label("查询故事时点", exact=True).fill("10")
+                timeline.get_by_role("button", name="查询故事状态", exact=True).click()
+                expect(timeline).to_contain_text("此时点没有匹配的正式状态")
                 review = page.get_by_role("region", name="提案审核详情")
                 review.get_by_role(
                     "button", name="查看来源 起风 v4", exact=True
@@ -924,14 +936,26 @@ def main() -> None:
                 review.get_by_label("已核对提案、来源及修改前内容", exact=False).check()
                 review.get_by_role("button", name="批准并生效", exact=True).click()
                 expect(canonical).to_contain_text("林舟是一名船医。")
+                timeline.get_by_label("查询故事时点", exact=True).fill("10")
+                timeline.get_by_role("button", name="查询故事状态", exact=True).click()
+                expect(timeline).to_contain_text("职业 = 船医")
+                timeline.get_by_label("查询故事时点", exact=True).fill("20")
+                timeline.get_by_role("button", name="查询故事状态", exact=True).click()
+                expect(timeline).to_contain_text("此时点没有匹配的正式状态")
                 canonical.get_by_role(
                     "button", name="提出修改 林舟身份", exact=True
                 ).click()
                 page.get_by_label("记忆内容", exact=True).fill(
                     "林舟曾任船医，现为领航员。"
                 )
+                expect(page.get_by_label("状态取值", exact=True)).to_have_value("船医")
+                page.get_by_label("状态取值", exact=True).fill("领航员")
+                page.get_by_label("开始时点", exact=True).fill("20")
+                page.get_by_label("结束时点", exact=True).fill("")
                 page.get_by_role("button", name="提交记忆提案", exact=True).click()
                 expect(review).to_contain_text("修改前")
+                expect(review).to_contain_text("职业 = 船医")
+                expect(review).to_contain_text("职业 = 领航员")
                 other_review = context.new_page()
                 other_review.goto(origin + "/memory")
                 other_review.get_by_label("当前作品", exact=True).select_option(
@@ -971,6 +995,29 @@ def main() -> None:
                 expect(page.get_by_role("region", name="记忆版本历史")).to_contain_text(
                     "历史版本"
                 )
+                timeline.get_by_label("查询故事时点", exact=True).fill("10")
+                timeline.get_by_role("button", name="查询故事状态", exact=True).click()
+                expect(timeline).to_contain_text("此时点没有匹配的正式状态")
+                timeline.get_by_label("查询故事时点", exact=True).fill("25")
+                timeline.get_by_label("查询对象", exact=True).fill("人物-林舟")
+                timeline.get_by_role("button", name="查询故事状态", exact=True).click()
+                expect(timeline).to_contain_text("职业 = 领航员")
+                page.get_by_label("记忆标识", exact=True).fill("人物-林舟-重叠职业")
+                page.get_by_label("记忆标题", exact=True).fill("重叠的职业提案")
+                page.get_by_label("记忆内容", exact=True).fill("林舟同时被标记为船医，等待核对。")
+                page.get_by_label("指定故事状态与生效区间", exact=True).check()
+                page.get_by_label("对象标识", exact=True).fill("人物-林舟")
+                page.get_by_label("状态属性", exact=True).fill("职业")
+                page.get_by_label("状态取值", exact=True).fill("船医")
+                page.get_by_label("开始时点", exact=True).fill("25")
+                page.get_by_label("记忆来源版本", exact=True).select_option(label="起风 · v4")
+                page.get_by_role("button", name="提交记忆提案", exact=True).click()
+                expect(review).to_contain_text("同一对象和属性的故事区间重叠")
+                expect(review).to_contain_text("重叠条目（最多显示 20 项）：林舟身份")
+                expect(review.get_by_role("button", name="批准并生效", exact=True)).to_be_disabled()
+                review.get_by_label("审核说明", exact=True).fill("区间重叠，保留现行职业")
+                review.get_by_role("button", name="驳回提案", exact=True).click()
+                expect(review).to_contain_text("已驳回")
                 page.get_by_label("记忆标识", exact=True).fill("事件-风暴")
                 page.get_by_label("记忆标题", exact=True).fill("待核对风暴")
                 page.get_by_label("记忆类型", exact=True).select_option("event")
@@ -1009,6 +1056,9 @@ def main() -> None:
                 review.get_by_role("button", name="驳回提案", exact=True).click()
                 expect(review).to_contain_text("已驳回")
                 expect(canonical).to_contain_text("来源已有新版本，需复查")
+                timeline.get_by_label("查询故事时点", exact=True).fill("25")
+                timeline.get_by_role("button", name="查询故事状态", exact=True).click()
+                expect(timeline).to_contain_text("来源已有新版本，需复查")
                 page.set_viewport_size({"width": 1440, "height": 1100})
                 page.screenshot(path=str(output / "memory-desktop.png"), full_page=True)
                 page.set_viewport_size({"width": 390, "height": 844})
@@ -1084,6 +1134,10 @@ def main() -> None:
                             "memory_concurrent_decision_preserves_input",
                             "memory_source_change_blocks_approval",
                             "memory_mobile_no_horizontal_overflow",
+                            "story_half_open_interval_and_candidate_isolation",
+                            "story_revision_history_distinct_from_chronology",
+                            "story_overlap_blocks_approval",
+                            "story_source_change_warning",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

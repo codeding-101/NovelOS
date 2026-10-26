@@ -9,3 +9,16 @@
   max-height: 480px;
   overflow-y: auto;
 }
+
+.stateFields {
+  min-inline-size: 0;
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #dce3dd;
+  border-radius: 8px;
+}
+
+.stateSummary {
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}

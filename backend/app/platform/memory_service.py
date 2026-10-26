@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 
 from app.platform.budget_service import signature
 from app.platform.executor_service import lock_work
+from app.platform import story_service
 from app.platform.models import (
     Asset,
     AssetRevision,
@@ -14,6 +15,7 @@ from app.platform.models import (
     MemoryEntry,
     MemoryProposal,
     MemorySource,
+    MemoryStoryState,
     TaskSubmission,
     now,
 )
@@ -85,6 +87,8 @@ def blockers(session, proposal, evidence):
         result.append("PROPOSAL_EXPIRED")
     if not evidence or any(not row["current"] for row in evidence):
         result.append("SOURCE_CHANGED")
+    if story_service.conflicts(session, proposal):
+        result.append("STORY_STATE_OVERLAP")
     return result
 
 
@@ -96,6 +100,13 @@ def data(session, proposal, *, include_content=True):
         "id": proposal.id,
         "entry_key": proposal.entry_key,
         "kind": proposal.kind,
+        "story_state": story_service.state_data(session, proposal.id),
+        "story_conflicts": [
+            {"id": row.id, "entry_key": row.entry_key, "title": row.title}
+            for row in story_service.conflicts(session, proposal)
+        ]
+        if not decision
+        else [],
         "title": proposal.title,
         **({"content": proposal.content} if include_content else {}),
         "base_proposal_id": proposal.base_proposal_id,
@@ -116,7 +127,11 @@ def data(session, proposal, *, include_content=True):
 def create(db, work_id, body):
     with db.sessions.begin() as session:
         lock_work(session, work_id)
-        fingerprint = signature(body.model_dump())
+        payload = body.model_dump()
+        # Preserve pre-0012 request hashes when no structured state was supplied.
+        if body.story_state is None:
+            payload.pop("story_state")
+        fingerprint = signature(payload)
         previous = session.scalar(
             select(MemoryProposal).where(
                 MemoryProposal.work_id == work_id,
@@ -148,12 +163,20 @@ def create(db, work_id, body):
                 raise HTTPException(409, "关联任务候选时须包含其输入版本来源")
         proposal = MemoryProposal(
             work_id=work_id,
-            **body.model_dump(exclude={"source_revision_ids", "ttl_seconds"}),
+            **body.model_dump(
+                exclude={"source_revision_ids", "ttl_seconds", "story_state"}
+            ),
             request_hash=fingerprint,
             expires_at=now() + timedelta(seconds=body.ttl_seconds),
         )
         session.add(proposal)
         session.flush()
+        if body.story_state is not None:
+            session.add(
+                MemoryStoryState(
+                    proposal_id=proposal.id, **body.story_state.model_dump()
+                )
+            )
         session.add_all(
             [
                 MemorySource(proposal_id=proposal.id, revision_id=row["revision_id"])
@@ -187,7 +210,9 @@ def decide(db, work_id, proposal_id, body):
             if invalid:
                 raise HTTPException(
                     409,
-                    "提案已失效（来源、正式记忆或有效期变化），请重新核对并提交新提案",
+                    "提案不能批准（"
+                    + "、".join(invalid)
+                    + "）：请核对来源、版本、期限及故事状态区间后重新提交",
                 )
             head = session.get(MemoryEntry, (work_id, proposal.entry_key))
             version = head.version + 1 if head else 1

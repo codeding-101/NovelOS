@@ -545,3 +545,22 @@ class MemoryEntry(PlatformBase):
         ForeignKey("memory_proposals.id"), unique=True
     )
     version: Mapped[int] = mapped_column(Integer)
+
+
+class MemoryStoryState(PlatformBase):
+    __tablename__ = "memory_story_states"
+    __table_args__ = (
+        CheckConstraint(
+            "valid_from >= 0 AND valid_from <= 1000000000000 AND "
+            "(valid_until IS NULL OR (valid_until > valid_from AND valid_until <= 1000000000000))",
+            name="story_state_interval",
+        ),
+    )
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_proposals.id"), primary_key=True
+    )
+    subject_key: Mapped[str] = mapped_column(String(128), index=True)
+    predicate: Mapped[str] = mapped_column(String(128))
+    value: Mapped[str] = mapped_column(String(1024))
+    valid_from: Mapped[int] = mapped_column(BigInteger)
+    valid_until: Mapped[int | None] = mapped_column(BigInteger)

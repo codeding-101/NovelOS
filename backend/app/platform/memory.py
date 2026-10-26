@@ -2,11 +2,29 @@ from typing import Literal
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import or_, select
 from app.platform import memory_service as service
+from app.platform import story_service
 from app.platform.memory_protocol import DecisionInput, MemoryKind, ProposalInput
 from app.platform.models import MemoryDecision, MemoryEntry, MemoryProposal
 from app.platform.works import require_work
 
 router = APIRouter(prefix="/api/v1/works/{work_id}/memory", tags=["memory"])
+
+
+@router.get("/timeline")
+def timeline(
+    work_id: str,
+    request: Request,
+    at: int = Query(ge=0, le=1000000000000),
+    subject_key: str | None = Query(None, min_length=1, max_length=128),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+):
+    with request.app.state.database.sessions() as session:
+        require_work(session, work_id)
+        query = (
+            story_service.at_query(work_id, at, subject_key).offset(offset).limit(limit)
+        )
+        return [service.data(session, row) for row in session.scalars(query)]
 
 
 @router.get("")
