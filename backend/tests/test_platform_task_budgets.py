@@ -352,7 +352,7 @@ def test_upgrade_keeps_legacy_model_blocked_until_budget_is_set(
             )
         )
     db.upgrade()
-    assert db.require_current() == "0012_story_states"
+    assert db.require_current() == "0013_context_snapshots"
     assert tasks.create_task(db, body) == task_id
     assert summary(db, task_id)["configured"] is False
     runtime.run_model(db, settings)

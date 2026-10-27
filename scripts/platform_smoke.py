@@ -1066,6 +1066,68 @@ def main() -> None:
                 assert page.evaluate(
                     "document.documentElement.scrollWidth <= window.innerWidth"
                 )
+                canonical.get_by_role("button", name="提出修改 林舟身份", exact=True).click()
+                page.get_by_label("记忆来源版本", exact=True).select_option(label="起风 · v5")
+                page.get_by_role("button", name="提交记忆提案", exact=True).click()
+                review.get_by_label("审核说明", exact=True).fill("核对新版正文，确认领航员设定")
+                review.get_by_label("已核对提案、来源及修改前内容", exact=False).check()
+                review.get_by_role("button", name="批准并生效", exact=True).click()
+                expect(canonical).to_contain_text("v3")
+                page.goto(origin + "/contexts")
+                page.get_by_label("当前作品", exact=True).select_option(label="浏览器作品验证")
+                page.get_by_label("快照名称", exact=True).fill("正文容量基线")
+                page.get_by_label("输入正文版本", exact=True).select_option(label="起风 · v5")
+                page.get_by_label("任务目标", exact=True).fill("核对林舟身份与清晨风暴，不修改正文。")
+                page.get_by_label("目标故事时点", exact=True).fill("25")
+                page.get_by_role("button", name="保存上下文快照", exact=True).click()
+                snapshot_detail = page.get_by_role("region", name="快照详情", exact=True)
+                expect(snapshot_detail).to_contain_text("保存时状态：已组装")
+                size_text = snapshot_detail.locator("p").filter(has_text="必需内容").inner_text()
+                required_bytes = int(size_text.split("必需内容 ")[1].split(" 字节")[0])
+                page.get_by_role("button", name="加入快照 林舟身份", exact=True).click()
+                page.get_by_label("必需 林舟身份", exact=True).uncheck()
+                page.get_by_label("容量上限（字节）", exact=True).fill(str(required_bytes + 1))
+                page.get_by_label("快照名称", exact=True).fill("可选内容省略")
+                page.get_by_role("button", name="保存上下文快照", exact=True).click()
+                expect(snapshot_detail).to_contain_text("已省略：可选内容因容量不足省略")
+                expect(snapshot_detail).to_contain_text("保存时状态：已组装")
+                page.get_by_label("必需 林舟身份", exact=True).check()
+                page.get_by_label("快照名称", exact=True).fill("必需内容超限")
+                page.get_by_role("button", name="保存上下文快照", exact=True).click()
+                expect(snapshot_detail).to_contain_text("保存时状态：已阻断")
+                expect(snapshot_detail).to_contain_text("必需内容超过容量")
+                expect(snapshot_detail).to_contain_text("林舟曾任船医，现为领航员。")
+                page.get_by_label("容量上限（字节）", exact=True).fill("65536")
+                page.get_by_label("快照名称", exact=True).fill("完整上下文")
+                page.get_by_role("button", name="保存上下文快照", exact=True).click()
+                expect(snapshot_detail).to_contain_text("保存时状态：已组装")
+                expect(snapshot_detail).to_contain_text("林舟身份 · 必需 · 完整纳入")
+                snapshot_detail.get_by_role("button", name="重新核对快照依据", exact=True).click()
+                expect(snapshot_detail.get_by_role("status")).to_contain_text("组装条件通过")
+                snapshot_detail.get_by_role("button", name="查看记忆来源 林舟身份 v5", exact=True).click()
+                expect(page.get_by_role("region", name="快照来源原文")).to_contain_text("风暴在清晨到来")
+                page.reload()
+                page.get_by_label("当前作品", exact=True).select_option(label="浏览器作品验证")
+                page.get_by_role("button", name="查看快照 完整上下文", exact=True).click()
+                expect(snapshot_detail).to_contain_text("林舟曾任船医，现为领航员。")
+                source_editor = context.new_page()
+                source_editor.goto(origin + "/works")
+                source_editor.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                source_editor.get_by_role("button", name="章节 起风").click()
+                source_editor.get_by_label("正文", exact=True).fill("风暴已过，船队转向北方。")
+                source_editor.get_by_role("button", name="保存新版本", exact=True).click()
+                expect(source_editor.get_by_role("status").filter(has_text="已保存版本 6")).to_be_visible()
+                source_editor.close()
+                snapshot_detail.get_by_role("button", name="重新核对快照依据", exact=True).click()
+                expect(snapshot_detail.get_by_role("status")).to_contain_text("组装条件不通过")
+                expect(snapshot_detail).to_contain_text("输入正文已有新版本")
+                expect(snapshot_detail).to_contain_text("风暴在清晨到来")
+                expect(snapshot_detail).not_to_contain_text("船队转向北方")
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(path=str(output / "contexts-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "contexts-mobile.png"), full_page=True)
+                assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                 page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
@@ -1138,6 +1200,11 @@ def main() -> None:
                             "story_revision_history_distinct_from_chronology",
                             "story_overlap_blocks_approval",
                             "story_source_change_warning",
+                            "context_optional_omission_and_required_capacity_block",
+                            "context_required_content_preserved_without_truncation",
+                            "context_source_preview_and_reload_persistence",
+                            "context_freshness_check_does_not_rewrite_snapshot",
+                            "context_mobile_no_horizontal_overflow",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

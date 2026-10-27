@@ -1,0 +1,14 @@
+.text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.8;
+  padding: 12px;
+  background: #f5f8f5;
+  border-radius: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.wrap {
+  overflow-wrap: anywhere;
+}

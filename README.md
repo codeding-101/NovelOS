@@ -12,6 +12,8 @@
 
 记忆可附带对象、属性、取值和故事生效区间，支持按故事时点查看当前正式设定；同一属性的重叠区间阻止批准。故事时点由用户约定，与审核版本分别管理，旧记忆不会被自动补造时间。
 
+上下文快照页可固定目标、正文与选定正式记忆，按实际 UTF-8 字节检查容量，保留必需内容并记录可选项省略原因。快照支持来源定位及失效复查；当前用于离线准备，尚未接入任务执行和模型分词。
+
 ## 文档
 
 - [需求与开发规划](docs/planning/README.md)
@@ -39,6 +41,8 @@
 - [记忆受控生效决策](docs/decisions/0011-memory-review.md)
 - [故事状态与时点查询](docs/operations/story-states.md)
 - [故事区间与现行设定查询决策](docs/decisions/0012-story-states.md)
+- [上下文快照与容量检查](docs/operations/context-snapshots.md)
+- [离线上下文与容量取舍决策](docs/decisions/0013-context-snapshots.md)
 - [旧版使用说明归档](docs/legacy/README.md)
 
 ## 服务器部署
@@ -68,7 +72,7 @@ cd backend
 python -m pip install -r requirements-dev.txt
 python -m pytest
 # 配置隔离的 NOVELOS_TEST_POSTGRES_URL 后，同一组用例也会验证真实 PostgreSQL。
-python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py tests/test_platform_models.py tests/test_platform_task_budgets.py tests/test_platform_quotas.py tests/test_platform_memory.py tests/test_platform_story.py -v
+python -m pytest tests/test_platform_foundation.py tests/test_platform_works.py tests/test_platform_delivery.py tests/test_platform_tasks.py tests/test_platform_budgets.py tests/test_platform_executors.py tests/test_platform_agents.py tests/test_platform_models.py tests/test_platform_task_budgets.py tests/test_platform_quotas.py tests/test_platform_memory.py tests/test_platform_story.py tests/test_platform_contexts.py -v
 ```
 
 前端构建：在 `frontend` 执行 `npm ci` 和 `npm run build`。浏览器验收与容器冒烟见部署指南和 GitHub Actions 配置。真实模型测试默认跳过；模拟结果不能替代朱雀检测证据。

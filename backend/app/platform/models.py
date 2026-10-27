@@ -564,3 +564,52 @@ class MemoryStoryState(PlatformBase):
     value: Mapped[str] = mapped_column(String(1024))
     valid_from: Mapped[int] = mapped_column(BigInteger)
     valid_until: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class ContextSnapshot(PlatformBase):
+    __tablename__ = "context_snapshots"
+    __table_args__ = (
+        UniqueConstraint("work_id", "request_key", name="context_request_key"),
+        CheckConstraint("status IN ('READY','BLOCKED')", name="context_status"),
+        CheckConstraint(
+            "status != 'READY' OR used_bytes <= capacity_bytes",
+            name="context_ready_capacity",
+        ),
+        CheckConstraint(
+            "capacity_bytes > 0 AND capacity_bytes <= 8388608 AND required_bytes > 0 AND used_bytes >= required_bytes",
+            name="context_capacity",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    title: Mapped[str] = mapped_column(String(256))
+    input_revision_id: Mapped[str] = mapped_column(ForeignKey("asset_revisions.id"))
+    story_at: Mapped[int | None] = mapped_column(BigInteger)
+    capacity_bytes: Mapped[int] = mapped_column(Integer)
+    required_bytes: Mapped[int] = mapped_column(Integer)
+    used_bytes: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16))
+    blockers: Mapped[list] = mapped_column(JSON)
+    document: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    request_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ContextMemory(PlatformBase):
+    __tablename__ = "context_memories"
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "position", name="context_memory_position"),
+        CheckConstraint("NOT required OR included", name="context_required_included"),
+    )
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("context_snapshots.id"), primary_key=True
+    )
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_proposals.id"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    required: Mapped[bool] = mapped_column(default=True)
+    included: Mapped[bool] = mapped_column(default=True)
+    omission_reason: Mapped[str | None] = mapped_column(String(32))

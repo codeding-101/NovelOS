@@ -393,7 +393,7 @@ def test_upgrade_does_not_promote_assets_or_task_results(platform_database):
         command.upgrade(config, "0010_monthly_quotas")
     body = task_input(db)
     db.upgrade()
-    assert db.require_current() == "0012_story_states"
+    assert db.require_current() == "0013_context_snapshots"
     with db.sessions() as session:
         assert session.get(AssetRevision, body.input_revision_id).status == "DRAFT"
         for table in (MemoryEntry, MemoryProposal, MemorySource, MemoryDecision):

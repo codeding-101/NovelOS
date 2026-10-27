@@ -230,6 +230,9 @@ export default function Page() {
             <p>
               <a href="/memory">记忆与审核 →</a>
             </p>
+            <p>
+              <a href="/contexts">上下文快照 →</a>
+            </p>
           </section>
           <div className={styles.cards}>
             <section className={styles.card}>
