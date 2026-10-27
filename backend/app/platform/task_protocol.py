@@ -42,6 +42,7 @@ class TaskSpendingUpdate(TaskSpendingLimit):
 
 
 class TaskInput(Contract):
+    context_snapshot_id: str | None = Field(default=None, min_length=1, max_length=32)
     spending_limit: TaskSpendingLimit | None = None
     protocol_version: Literal["1.0"] = "1.0"
     work_id: str = Field(min_length=1, max_length=32)
@@ -104,8 +105,18 @@ class Usage(Contract):
         return self
 
 
+class ContextAck(Contract):
+    snapshot_id: str = Field(min_length=1, max_length=32)
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class ContextDelivery(ContextAck):
+    document: str
+
+
 class ResultEnvelope(LeaseInput):
-    protocol_version: Literal["1.0"] = "1.0"
+    protocol_version: Literal["1.0", "1.1"] = "1.0"
+    context_ack: ContextAck | None = None
     task_id: str = Field(min_length=1, max_length=32)
     executor_id: str = Field(min_length=1, max_length=32)
     submission_id: str = Field(min_length=1, max_length=128)
@@ -157,7 +168,8 @@ class TaskBudget(Contract):
 
 
 class TaskEnvelope(Contract):
-    protocol_version: Literal["1.0"]
+    protocol_version: Literal["1.0", "1.1"]
+    context: ContextDelivery | None = None
     task_id: str
     work_id: str
     attempt_id: str

@@ -116,6 +116,16 @@ def diagnostic(client: AgentClient, path: Path):
     if state["state"] in {"PAUSED", "FAILED", "CANCELLED", "SUCCEEDED"}:
         raise RuntimeError("Task requires owner action or is already complete")
     envelope = client.claim()
+    context = envelope.get("context")
+    if context:
+        if (
+            envelope["protocol_version"] != "1.1"
+            or hashlib.sha256(context["document"].encode("utf-8")).hexdigest()
+            != context["sha256"]
+        ):
+            raise ValueError("Invalid context delivery")
+    elif envelope["protocol_version"] != "1.0":
+        raise ValueError("Unsupported task protocol")
     lease = {
         "attempt_id": envelope["attempt_id"],
         "lease_token": envelope["lease_token"],
@@ -129,6 +139,11 @@ def diagnostic(client: AgentClient, path: Path):
     stats = {
         "sha256": envelope["input"]["sha256"],
         "characters": len(envelope["input"]["content"]),
+        **(
+            {"context_sha256": envelope["context"]["sha256"]}
+            if envelope.get("context")
+            else {}
+        ),
     }
     previous = envelope["checkpoint"]
     if (
@@ -151,6 +166,16 @@ def diagnostic(client: AgentClient, path: Path):
         )
     result = {
         **lease,
+        "protocol_version": envelope["protocol_version"],
+        **(
+            {
+                "context_ack": {
+                    key: envelope["context"][key] for key in ("snapshot_id", "sha256")
+                }
+            }
+            if envelope.get("context")
+            else {}
+        ),
         "task_id": client.task_id,
         "executor_id": envelope["executor_id"],
         "submission_id": "offline-diagnostic-v1",

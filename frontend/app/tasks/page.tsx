@@ -45,6 +45,12 @@ type Checkpoint = {
   payload: { note?: string };
 };
 type Detail = Task & {
+  context: {
+    snapshot_id: string;
+    title: string;
+    sha256: string;
+    freshness: { fresh: boolean };
+  } | null;
   spending_budget: TaskSpendingBudget;
   routing: {
     requested_executor_id: string;
@@ -68,6 +74,8 @@ type Detail = Task & {
   dependencies: { id: string; state: string }[];
 };
 type Lease = {
+  protocol_version: string;
+  context?: { snapshot_id: string; sha256: string; document: string };
   task_id: string;
   attempt_id: string;
   lease_token: string;
@@ -107,6 +115,8 @@ const dispositions: Record<string, string> = {
   FAILED: "失败记录",
 };
 const reasons: Record<string, string> = {
+  CONTEXT_STALE: "上下文依据已变化，请使用新快照创建任务",
+  CONTEXT_MISMATCH: "结果没有正确确认本任务绑定的上下文，已隔离",
   INPUT_STALE: "输入正文已有新版本，需要重新创建任务",
   LEASE_EXPIRED: "执行失联，检查点已保留",
   ATTEMPTS_EXHAUSTED: "已达到尝试次数上限",
@@ -150,6 +160,10 @@ export default function TasksPage() {
   const [executorId, setExecutorId] = useState("human");
   const [type, setType] = useState("analyze");
   const [objective, setObjective] = useState("");
+  const [contextId, setContextId] = useState("");
+  const [contexts, setContexts] = useState<
+    { id: string; title: string; status: string }[]
+  >([]);
   const [dependency, setDependency] = useState("");
   const [maxAttempts, setMaxAttempts] = useState(3);
   const [taskMoney, setTaskMoney] = useState("");
@@ -304,13 +318,18 @@ export default function TasksPage() {
     setCandidate(null);
   }
   async function openWork(id: string) {
-    const [items, list] = await Promise.all([
+    const [items, list, snapshots] = await Promise.all([
       allPages<Asset>(`/works/${id}/assets`),
       platformRequest<Task[]>(`/tasks?work_id=${id}&limit=100`),
+      allPages<{ id: string; title: string; status: string }>(
+        `/works/${id}/contexts`,
+      ),
     ]);
     setWorkId(id);
     setAssets(items);
     setTasks(list);
+    setContexts(snapshots);
+    setContextId("");
     setAssetId("");
     setDependency("");
     setDetail(null);
@@ -346,6 +365,7 @@ export default function TasksPage() {
             }
           : null,
         work_id: workId,
+        ...(contextId ? { context_snapshot_id: contextId } : {}),
         input_revision_id: asset.revision_id,
         executor_id: executorId,
         task_type: type,
@@ -368,6 +388,7 @@ export default function TasksPage() {
       );
       await openTask(created.id);
       setObjective("");
+      setContextId("");
       setNotice("任务已入队。结果将保留为候选，不会自动改写正文。");
       createKey.current = { signature: "", key: "" };
     });
@@ -442,6 +463,15 @@ export default function TasksPage() {
     await run(async () => {
       const payload = {
         task_id: lease.task_id,
+        protocol_version: lease.protocol_version,
+        ...(lease.context
+          ? {
+              context_ack: {
+                snapshot_id: lease.context.snapshot_id,
+                sha256: lease.context.sha256,
+              },
+            }
+          : {}),
         executor_id: lease.executor_id,
         attempt_id: lease.attempt_id,
         result_status: "success",
@@ -559,13 +589,75 @@ export default function TasksPage() {
         <>
           <form className={styles.create} onSubmit={create}>
             <h2>新建任务</h2>
+            <label>
+              绑定上下文快照（可选）
+              <select
+                aria-label="绑定上下文快照"
+                value={contextId}
+                disabled={busy}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) {
+                    setContextId("");
+                    return;
+                  }
+                  void run(async () => {
+                    const item = await platformRequest<{
+                      input_revision_id: string;
+                      status: string;
+                      document: string;
+                      freshness: { fresh: boolean };
+                    }>(`/works/${workId}/contexts/${id}`);
+                    if (item.status !== "READY" || !item.freshness.fresh)
+                      throw new Error("快照已阻断或依据变化，请重新组装。");
+                    const asset = assets.find(
+                      (a) => a.revision_id === item.input_revision_id,
+                    );
+                    if (!asset)
+                      throw new Error(
+                        "正文版本不在当前列表，请重新选择作品刷新后核对。",
+                      );
+                    setAssetId(asset.id);
+                    setObjective(JSON.parse(item.document).objective);
+                    setContextId(id);
+                  });
+                }}
+              >
+                <option value="">不绑定，使用原有正文任务流程</option>
+                {contexts.map((item) => (
+                  <option
+                    key={item.id}
+                    value={item.id}
+                    disabled={item.status !== "READY"}
+                  >
+                    {item.title}
+                    {item.status !== "READY" ? "（已阻断）" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p>
+              绑定后正文与目标来自快照，任务不能换绑；失效后须创建新快照和新任务。可在
+              <a href="/contexts">上下文页面</a>准备快照。
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void run(async () =>
+                  setContexts(await allPages(`/works/${workId}/contexts`)),
+                )
+              }
+            >
+              刷新上下文列表
+            </button>
             <div className={styles.fields}>
               <label>
                 输入版本
                 <select
                   required
                   value={assetId}
-                  disabled={busy}
+                  disabled={busy || !!contextId}
                   onChange={(e) => setAssetId(e.target.value)}
                 >
                   <option value="">选择已保存资产</option>
@@ -658,6 +750,7 @@ export default function TasksPage() {
                 maxLength={4000}
                 disabled={busy}
                 value={objective}
+                readOnly={!!contextId}
                 onChange={(e) => setObjective(e.target.value)}
               />
             </label>
@@ -770,6 +863,34 @@ export default function TasksPage() {
                       : "已出现新版本，旧输入成果需复查"}
                   </p>
                   <p>截止：{new Date(detail.deadline_at).toLocaleString()}</p>
+                  {detail.context && (
+                    <section aria-label="任务绑定上下文">
+                      <h3>上下文：{detail.context.title}</h3>
+                      <p style={{ overflowWrap: "anywhere" }}>
+                        SHA-256：{detail.context.sha256}
+                      </p>
+                      <p>
+                        {detail.context.freshness.fresh
+                          ? "绑定依据未变化"
+                          : "绑定依据已变化，需要新建任务"}
+                      </p>
+                      {lease?.context && (
+                        <details>
+                          <summary>本次执行的完整上下文</summary>
+                          <pre
+                            style={{
+                              whiteSpace: "pre-wrap",
+                              overflowWrap: "anywhere",
+                              maxHeight: 360,
+                              overflow: "auto",
+                            }}
+                          >
+                            {lease.context.document}
+                          </pre>
+                        </details>
+                      )}
+                    </section>
+                  )}
                   {detail.spending_budget.supported && (
                     <TaskBudget
                       key={detail.id}

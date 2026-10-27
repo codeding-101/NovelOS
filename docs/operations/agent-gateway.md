@@ -1,6 +1,6 @@
 # 离线 Agent 接入与恢复
 
-适用版本：schema `0007_agent_gateway`，任务协议 `1.0`，Agent 配置 `offline_v1`。
+适用版本：Agent 网关自 schema `0007_agent_gateway` 引入，当前 schema `0014_task_contexts`，Agent 配置 `offline_v1`。未绑定上下文的任务继续协议 `1.0`；绑定任务使用 `1.1` 并要求快照确认，见 [任务绑定上下文](task-contexts.md)。
 
 本工作包开放外部进程主动连接平台的任务接口。参考客户端只做字符数与输入哈希校验，不调用模型。尚未开放供应商 API、付费调用或供应商 token 用量上报；不能把协议验收结果当成 AI 创作、文学审查或朱雀检测报告。
 

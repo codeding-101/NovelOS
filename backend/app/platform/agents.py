@@ -175,7 +175,7 @@ def status(task_id: str, request: Request):
         }
 
 
-@router.post("/claim", response_model=TaskEnvelope)
+@router.post("/claim", response_model=TaskEnvelope, response_model_exclude_unset=True)
 def claim(task_id: str, request: Request):
     agent = principal(request, task_id)
     result = tasks.try_claim(

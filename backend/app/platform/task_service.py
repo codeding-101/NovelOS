@@ -23,6 +23,7 @@ from app.platform.models import (
     TaskDependency,
     TaskSubmission,
     TaskRoutingDecision,
+    TaskContext,
     identifier,
     now,
 )
@@ -32,6 +33,7 @@ from app.platform.works import require_asset, require_work
 from app.platform import budget_service
 from app.platform import executor_service
 from app.platform import agent_security
+from app.platform import task_context
 from app.platform.model_protocol import messages, input_bound
 
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED"}
@@ -80,7 +82,9 @@ def locked_task(session, task_id):
     )
     if result.rowcount != 1:
         raise HTTPException(404, "任务不存在")
-    return session.get(CreativeTask, task_id, populate_existing=True)
+    task = session.get(CreativeTask, task_id, populate_existing=True)
+    task_context.lock_bound_work(session, task)
+    return task
 
 
 def transition(task, state, reason=None):
@@ -101,11 +105,12 @@ def current_input(session, task):
 
 
 def create_task(db, body: TaskInput):
-    request_hash = fingerprint(
-        body.model_dump(
-            exclude={"spending_limit"} if body.spending_limit is None else set()
-        )
-    )
+    omitted = {
+        name
+        for name in ("spending_limit", "context_snapshot_id")
+        if getattr(body, name) is None
+    }
+    request_hash = fingerprint(body.model_dump(exclude=omitted))
 
     def existing(session):
         item = session.scalar(
@@ -124,6 +129,7 @@ def create_task(db, body: TaskInput):
             if previous is not None:
                 return previous.id
             require_work(session, body.work_id)
+            context = task_context.validate_creation(session, body)
             executor = session.get(Executor, body.executor_id)
             if body.executor_id != "auto" and (
                 executor is None
@@ -140,7 +146,11 @@ def create_task(db, body: TaskInput):
                 raise HTTPException(404, "输入版本不存在")
             bound = input_bound(
                 messages(
-                    body.task_type, body.objective, revision.title, revision.content
+                    body.task_type,
+                    body.objective,
+                    revision.title,
+                    revision.content,
+                    task_context.delivery(context),
                 )
             )
             selected, routing = executor_service.select_for_task(
@@ -184,6 +194,11 @@ def create_task(db, body: TaskInput):
             asset = require_asset(session, body.work_id, revision.asset_id)
             if asset.head_version != revision.number:
                 raise HTTPException(409, "请选择当前已保存的正文版本")
+            if context is not None:
+                from app.platform import context_service
+
+                if not context_service.freshness(session, context, lock=True)["fresh"]:
+                    raise HTTPException(409, "上下文依据已变化，请重新组装后创建任务")
             if len(set(body.dependencies)) != len(body.dependencies):
                 raise HTTPException(422, "依赖不能重复")
             for dep_id in body.dependencies:
@@ -211,6 +226,8 @@ def create_task(db, body: TaskInput):
             )
             session.add(task)
             session.flush()
+            if context is not None:
+                session.add(TaskContext(task_id=task.id, snapshot_id=context.id))
             session.add(
                 TaskRoutingDecision(
                     task_id=task.id,
@@ -229,6 +246,14 @@ def create_task(db, body: TaskInput):
                 "created",
                 executor=task.executor_id,
                 input_revision_id=revision.id,
+                **(
+                    {
+                        "context_snapshot_id": context.id,
+                        "context_sha256": context.sha256,
+                    }
+                    if context
+                    else {}
+                ),
                 spending_limit=spending_limit.model_dump() if spending_limit else None,
             )
             return task.id
@@ -261,8 +286,10 @@ def latest_checkpoint(session, task_id):
 
 def task_envelope(session, task, attempt, token):
     revision = session.get(AssetRevision, task.input_revision_id)
+    context = task_context.delivery(task_context.snapshot(session, task))
     return {
-        "protocol_version": "1.0",
+        "protocol_version": "1.1" if context else "1.0",
+        **({"context": context} if context else {}),
         "task_id": task.id,
         "work_id": task.work_id,
         "attempt_id": attempt.id,
@@ -317,6 +344,7 @@ def try_claim(db, task_id, executor_id, agent=None, *, provider=False):
                 and active(task, previous)
                 and previous.agent_credential_id == agent["id"]
             ):
+                task_context.require_current(session, task)
                 token = secrets.token_urlsafe(32)
                 previous.token_hash = hashed(token)
                 previous.lease_until = min(
@@ -379,6 +407,10 @@ def try_claim(db, task_id, executor_id, agent=None, *, provider=False):
             event(session, task, "blocked", reason=task.reason)
             return None
         if any(dep.state != "SUCCEEDED" for dep in dependencies):
+            return None
+        if not task_context.current(session, task):
+            transition(task, "FAILED", "CONTEXT_STALE")
+            event(session, task, "blocked", reason=task.reason)
             return None
         if not current_input(session, task):
             transition(task, "FAILED", "INPUT_STALE")
@@ -450,6 +482,7 @@ def heartbeat(db, task_id, body, agent=None):
         attempt = attempt_for(session, task, body, agent)
         if not active(task, attempt):
             raise HTTPException(409, "本次执行已结束或过期，不能续期")
+        task_context.require_current(session, task)
         attempt.lease_until = min(
             utc(task.deadline_at),
             utc(attempt.deadline_at),
@@ -477,6 +510,7 @@ def checkpoint(db, task_id, body: CheckpointInput, agent=None):
             return {"id": previous.id}
         if not active(task, attempt):
             raise HTTPException(409, "本次执行已结束或过期，检查点未保存")
+        task_context.require_current(session, task)
         highest = (
             session.scalar(
                 select(func.max(TaskCheckpoint.sequence)).where(
@@ -519,7 +553,11 @@ def submit(db, task_id, body: ResultEnvelope, agent=None):
 
 
 def submit_in_session(session, task, body, agent=None, *, provider_reservation=None):
-    data = body.model_dump(mode="json", exclude={"lease_token"})
+    data = body.model_dump(
+        mode="json",
+        exclude={"lease_token"}
+        | ({"context_ack"} if body.context_ack is None else set()),
+    )
     signature = fingerprint(data)
     if provider_reservation is None:
         if body.usage.accounting != "not_applicable":
@@ -563,6 +601,14 @@ def submit_in_session(session, task, body, agent=None, *, provider_reservation=N
     disposition, reason = "ACCEPTED", None
     if not active(task, attempt):
         disposition, reason = "QUARANTINED", "ATTEMPT_INACTIVE"
+    elif not task_context.current(session, task):
+        disposition, reason = "QUARANTINED", "CONTEXT_STALE"
+        transition(task, "FAILED", reason)
+        attempt.state = "FAILED"
+    elif not task_context.matches(session, task, body):
+        disposition, reason = "QUARANTINED", "CONTEXT_MISMATCH"
+        transition(task, "FAILED", reason)
+        attempt.state = "FAILED"
     elif not current_input(session, task):
         disposition, reason = "QUARANTINED", "INPUT_STALE"
         transition(task, "FAILED", reason)
@@ -641,6 +687,7 @@ def control(db, task_id, action, expected_version):
             quota_service.check_next_call(session, task)
             if budget_service.unknown_count(session, task.work_id, task.id):
                 raise HTTPException(409, "此任务仍有未知费用，请先核对账目再恢复")
+            task_context.require_current(session, task)
             if (
                 task.state != "PAUSED"
                 or task.attempt_count >= task.max_attempts
@@ -689,6 +736,7 @@ def takeover(db, task_id, expected_version):
             or not active(task, attempt)
         ):
             raise HTTPException(409, "任务状态已变化或已过期，请刷新后恢复")
+        task_context.require_current(session, task)
         token = secrets.token_urlsafe(32)
         attempt.token_hash = hashed(token)
         task.version += 1
@@ -830,6 +878,11 @@ def run_local(db):
             "sha256": envelope["input"]["sha256"],
             "characters": len(content),
             "paragraphs": len([line for line in content.splitlines() if line.strip()]),
+            **(
+                {"context_sha256": envelope["context"]["sha256"]}
+                if envelope.get("context")
+                else {}
+            ),
         }
         reused = bool(
             prior and prior["step"] == "local_analysis" and prior["payload"] == stats
@@ -844,6 +897,8 @@ def run_local(db):
             task_id,
             ResultEnvelope(
                 **lease,
+                protocol_version=envelope["protocol_version"],
+                context_ack=task_context.acknowledgement(envelope),
                 task_id=task_id,
                 executor_id="local_test",
                 submission_id="local-analysis-result",

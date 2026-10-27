@@ -613,3 +613,13 @@ class ContextMemory(PlatformBase):
     required: Mapped[bool] = mapped_column(default=True)
     included: Mapped[bool] = mapped_column(default=True)
     omission_reason: Mapped[str | None] = mapped_column(String(32))
+
+
+class TaskContext(PlatformBase):
+    __tablename__ = "task_contexts"
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("creative_tasks.id"), primary_key=True
+    )
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("context_snapshots.id"), index=True
+    )

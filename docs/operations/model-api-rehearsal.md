@@ -1,6 +1,6 @@
 # 模型 API 配置与本机协议验收
 
-适用版本：模型协议自 schema `0008_model_api` 引入，当前 schema `0010_monthly_quotas`。本工作包完成 Chat Completions 文本协议、预算预留、用量解析与候选保存的本机联调，**未开放公网模型调用或真实付费执行**。
+适用版本：模型协议自 schema `0008_model_api` 引入，当前 schema `0014_task_contexts`。本工作包完成 Chat Completions 文本协议、预算预留、用量解析与候选保存的本机联调，**未开放公网模型调用或真实付费执行**。绑定任务会发送固定快照并在发送登记及回报时复查依据，见 [任务绑定上下文](task-contexts.md)。
 
 ## 配置入口
 

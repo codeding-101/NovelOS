@@ -57,7 +57,7 @@ class ModelConfig(Contract):
         return value
 
 
-def messages(task_type, objective, title, content):
+def messages(task_type, objective, title, content, context=None):
     return [
         {
             "role": "system",
@@ -70,6 +70,7 @@ def messages(task_type, objective, title, content):
                     "task_type": task_type,
                     "objective": objective,
                     "input": {"title": title, "content": content},
+                    **({"context": context} if context else {}),
                 },
                 ensure_ascii=False,
             ),

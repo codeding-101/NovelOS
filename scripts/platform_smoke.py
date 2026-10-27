@@ -1128,6 +1128,47 @@ def main() -> None:
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(path=str(output / "contexts-mobile.png"), full_page=True)
                 assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                page.get_by_role("button", name="刷新正文版本", exact=True).click()
+                page.get_by_label("输入正文版本", exact=True).select_option(label="起风 · v6")
+                page.get_by_label("快照名称", exact=True).fill("任务绑定快照")
+                page.get_by_label("任务目标", exact=True).fill("上下文绑定浏览器验证")
+                page.get_by_role("button", name="保存上下文快照", exact=True).click()
+                expect(snapshot_detail).to_contain_text("保存时状态：已组装")
+                page.goto(origin + "/tasks")
+                page.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                page.get_by_label("绑定上下文快照", exact=True).select_option(label="完整上下文")
+                expect(page.get_by_role("alert").filter(has_text="快照已阻断或依据变化")).to_be_visible()
+                page.get_by_label("绑定上下文快照", exact=True).select_option(label="任务绑定快照")
+                expect(page.get_by_label("任务目标", exact=True)).to_have_value("上下文绑定浏览器验证")
+                expect(page.get_by_label("输入版本")).to_be_disabled()
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                task_detail = page.get_by_role("region", name="任务详情", exact=True)
+                expect(task_detail).to_contain_text("上下文：任务绑定快照")
+                page.get_by_role("button", name="领取人工任务", exact=True).click()
+                page.get_by_text("本次执行的完整上下文", exact=True).click()
+                expect(page.get_by_role("region", name="任务绑定上下文")).to_contain_text("船队转向北方")
+                page.get_by_label("候选结果", exact=True).fill("已核对固定上下文，保存为候选。")
+                page.get_by_role("button", name="提交候选结果", exact=True).click()
+                expect(task_detail).to_contain_text("候选已接收")
+                page.get_by_label("绑定上下文快照", exact=True).select_option(label="任务绑定快照")
+                page.get_by_role("button", name="创建任务", exact=True).click()
+                expect(task_detail).to_contain_text("排队中")
+                source_editor = context.new_page()
+                source_editor.goto(origin + "/works")
+                source_editor.get_by_label("当前作品").select_option(label="浏览器作品验证")
+                source_editor.get_by_role("button", name="章节 起风").click()
+                source_editor.get_by_label("正文", exact=True).fill("船队抵达北方港口，等待新的指令。")
+                source_editor.get_by_role("button", name="保存新版本", exact=True).click()
+                expect(source_editor.get_by_role("status").filter(has_text="已保存版本 7")).to_be_visible()
+                source_editor.close()
+                page.get_by_role("button", name="领取人工任务", exact=True).click()
+                expect(task_detail).to_contain_text("上下文依据已变化", timeout=10000)
+                expect(task_detail).to_contain_text("尝试 0 / 3")
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(path=str(output / "task-context-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "task-context-mobile.png"), full_page=True)
+                assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                 page.get_by_role("link", name="返回控制台").click()
                 page.set_viewport_size({"width": 390, "height": 844})
                 page.screenshot(
@@ -1205,6 +1246,10 @@ def main() -> None:
                             "context_source_preview_and_reload_persistence",
                             "context_freshness_check_does_not_rewrite_snapshot",
                             "context_mobile_no_horizontal_overflow",
+                            "task_context_binding_fills_locked_objective_and_input",
+                            "task_context_delivered_and_acknowledged_in_result",
+                            "task_context_stale_claim_consumes_no_attempt",
+                            "task_context_mobile_no_horizontal_overflow",
                             "executors_mobile_no_horizontal_overflow",
                             "tasks_mobile_no_horizontal_overflow",
                             "works_mobile_no_horizontal_overflow",

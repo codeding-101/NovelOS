@@ -69,7 +69,7 @@ def test_budget_upgrade_preserves_existing_task(platform_database):
             )
         )
     db.upgrade()
-    assert db.require_current() == "0013_context_snapshots"
+    assert db.require_current() == "0014_task_contexts"
     with db.sessions() as session:
         task = session.get(CreativeTask, task_id)
         assert (

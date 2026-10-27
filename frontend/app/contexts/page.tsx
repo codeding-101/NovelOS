@@ -222,7 +222,7 @@ export default function ContextPage() {
       </p>
       <p>
         本页用于准备与核对。容量按 UTF-8 字节计算，不等同于模型
-        token；暂不接入任务执行、自动摘要或模型调用。
+        token。已组装且依据有效的快照可在任务中心绑定；自动摘要与真实模型调用尚未开放。
       </p>
       {error && (
         <p role="alert" className={styles.error}>

@@ -24,6 +24,7 @@ from app.platform.task_protocol import (
 )
 from app.platform import task_service as service
 from app.platform import budget_service
+from app.platform import task_context
 from app.platform.works import require_work
 from app.platform.security import utc
 
@@ -90,6 +91,7 @@ def detail(task_id: str, request: Request):
         routing = session.get(TaskRoutingDecision, task_id)
         return {
             **task_data(task),
+            "context": task_context.summary(session, task),
             "spending_budget": budget_service.task_summary(session, task),
             "routing": {
                 "requested_executor_id": routing.requested_executor_id,
@@ -165,7 +167,11 @@ def submission(task_id: str, submission_id: str, request: Request):
         }
 
 
-@router.post("/tasks/{task_id}/claim", response_model=TaskEnvelope)
+@router.post(
+    "/tasks/{task_id}/claim",
+    response_model=TaskEnvelope,
+    response_model_exclude_unset=True,
+)
 def claim(task_id: str, request: Request):
     service.recover(request.app.state.database)
     result = service.try_claim(request.app.state.database, task_id, "human")
@@ -174,7 +180,11 @@ def claim(task_id: str, request: Request):
     return result
 
 
-@router.post("/tasks/{task_id}/takeover", response_model=TaskEnvelope)
+@router.post(
+    "/tasks/{task_id}/takeover",
+    response_model=TaskEnvelope,
+    response_model_exclude_unset=True,
+)
 def takeover(task_id: str, body: ControlInput, request: Request):
     return service.takeover(request.app.state.database, task_id, body.expected_version)
 

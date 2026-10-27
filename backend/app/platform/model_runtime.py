@@ -20,6 +20,7 @@ from app.platform.models import (
 )
 from app.platform.security import CredentialVault
 from app.platform import quota_service
+from app.platform import task_context
 from app.platform.task_protocol import ResultEnvelope, Usage
 from app.platform.budget_protocol import ReservationInput, SettlementInput
 
@@ -56,12 +57,14 @@ def prepare(db, settings, envelope):
         ):
             raise ValueError("Model plan or input changed")
         chosen = plan(session, task)
+        task_context.require_current(session, task)
         config = chosen["api_config"]
         items = messages(
             task.task_type,
             task.objective,
             envelope["input"]["title"],
             envelope["input"]["content"],
+            task_context.delivery(task_context.snapshot(session, task)),
         )
         maximum_input = chosen["context_tokens"] - config["max_output_tokens"]
         if input_bound(items) > maximum_input:
@@ -176,6 +179,8 @@ def finish(db, envelope, reservation_id, chosen, raw):
     )
     complete = complete and bool(content.strip()) and not exceeded
     body = ResultEnvelope(
+        protocol_version=envelope["protocol_version"],
+        context_ack=task_context.acknowledgement(envelope),
         task_id=envelope["task_id"],
         attempt_id=envelope["attempt_id"],
         executor_id=envelope["executor_id"],
