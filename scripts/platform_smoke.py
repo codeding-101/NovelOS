@@ -1079,12 +1079,35 @@ def main() -> None:
                 page.get_by_label("输入正文版本", exact=True).select_option(label="起风 · v5")
                 page.get_by_label("任务目标", exact=True).fill("核对林舟身份与清晨风暴，不修改正文。")
                 page.get_by_label("目标故事时点", exact=True).fill("25")
+                recommendations = page.get_by_role("region", name="相关记忆推荐", exact=True)
+                page.get_by_label("记忆关键词", exact=True).fill("林舟 船医")
+                page.get_by_role("button", name="按相关性推荐", exact=True).click()
+                expect(recommendations).to_contain_text("林舟身份 · v3")
+                expect(recommendations).to_contain_text("匹配词：")
+                expect(page.get_by_role("region", name="已选记忆", exact=True)).to_contain_text("已选记忆（0/50）")
+                page.get_by_label("目标故事时点", exact=True).fill("26")
+                expect(recommendations.get_by_role("button", name="推荐加入 林舟身份", exact=True)).to_have_count(0)
+                page.get_by_label("目标故事时点", exact=True).fill("25")
+                page.get_by_label("记忆关键词", exact=True).fill("%%%")
+                page.get_by_role("button", name="按相关性推荐", exact=True).click()
+                expect(page.get_by_role("alert").filter(has_text="请输入包含中文")).to_be_visible()
+                expect(page.get_by_label("快照名称", exact=True)).to_have_value("正文容量基线")
+                page.get_by_label("记忆关键词", exact=True).fill("林舟 船医")
+                page.get_by_role("button", name="按相关性推荐", exact=True).click()
+                expect(recommendations).to_contain_text("林舟身份 · v3")
+                page.set_viewport_size({"width": 1440, "height": 1100})
+                page.screenshot(path=str(output / "retrieval-desktop.png"), full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.screenshot(path=str(output / "retrieval-mobile.png"), full_page=True)
+                assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                 page.get_by_role("button", name="保存上下文快照", exact=True).click()
                 snapshot_detail = page.get_by_role("region", name="快照详情", exact=True)
                 expect(snapshot_detail).to_contain_text("保存时状态：已组装")
                 size_text = snapshot_detail.locator("p").filter(has_text="必需内容").inner_text()
                 required_bytes = int(size_text.split("必需内容 ")[1].split(" 字节")[0])
-                page.get_by_role("button", name="加入快照 林舟身份", exact=True).click()
+                page.get_by_role("button", name="推荐加入 林舟身份", exact=True).click()
+                expect(page.get_by_role("button", name="推荐加入 林舟身份", exact=True)).to_be_disabled()
+                expect(page.get_by_role("button", name="加入快照 林舟身份", exact=True)).to_be_disabled()
                 page.get_by_label("必需 林舟身份", exact=True).uncheck()
                 page.get_by_label("容量上限（字节）", exact=True).fill(str(required_bytes + 1))
                 page.get_by_label("快照名称", exact=True).fill("可选内容省略")
@@ -1123,6 +1146,9 @@ def main() -> None:
                 expect(snapshot_detail).to_contain_text("输入正文已有新版本")
                 expect(snapshot_detail).to_contain_text("风暴在清晨到来")
                 expect(snapshot_detail).not_to_contain_text("船队转向北方")
+                page.get_by_label("记忆关键词", exact=True).fill("林舟 船医")
+                page.get_by_role("button", name="按相关性推荐", exact=True).click()
+                expect(recommendations).to_contain_text("没有相关的有效记忆")
                 page.set_viewport_size({"width": 1440, "height": 1100})
                 page.screenshot(path=str(output / "contexts-desktop.png"), full_page=True)
                 page.set_viewport_size({"width": 390, "height": 844})
@@ -1247,6 +1273,11 @@ def main() -> None:
                             "context_freshness_check_does_not_rewrite_snapshot",
                             "context_mobile_no_horizontal_overflow",
                             "task_context_binding_fills_locked_objective_and_input",
+                            "retrieval_ranking_evidence_and_explicit_selection",
+                            "retrieval_time_change_clears_recommendations",
+                            "retrieval_invalid_query_preserves_form",
+                            "retrieval_stale_sources_excluded",
+                            "retrieval_mobile_no_horizontal_overflow",
                             "task_context_delivered_and_acknowledged_in_result",
                             "task_context_stale_claim_consumes_no_attempt",
                             "task_context_mobile_no_horizontal_overflow",

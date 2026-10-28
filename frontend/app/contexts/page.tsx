@@ -23,6 +23,13 @@ type Memory = {
   story_state: StoryState | null;
 };
 type Choice = { proposal_id: string; title: string; required: boolean };
+type Recommendations = {
+  query: string;
+  scanned: number;
+  matched: number;
+  scan_limit: number;
+  items: { memory: Memory; score: number; matched_terms: string[] }[];
+};
 type Issue = { code: string; reference_id: string | null };
 type Freshness = {
   fresh: boolean;
@@ -100,6 +107,8 @@ export default function ContextPage() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [choices, setChoices] = useState<Choice[]>([]);
   const [query, setQuery] = useState("");
+  const [recommendations, setRecommendations] =
+    useState<Recommendations | null>(null);
   const [appliedQuery, setAppliedQuery] = useState("");
   const [memoryOffset, setMemoryOffset] = useState(0);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -124,6 +133,9 @@ export default function ContextPage() {
   const busy = pending || expired;
   const prefix = `/works/${workId}/contexts`;
   const payload: Document | null = detail ? JSON.parse(detail.document) : null;
+  useEffect(() => {
+    setRecommendations(null);
+  }, [workId, query, storyAt]);
   function edited(action: () => void) {
     action();
     requestKey.current = "";
@@ -164,6 +176,19 @@ export default function ContextPage() {
     setMemories(rows);
     setMemoryOffset(start);
     setAppliedQuery(search);
+  }
+  async function recommend() {
+    setRecommendations(null);
+    const at = storyAt === "" ? null : Number(storyAt);
+    if (at !== null && (!Number.isSafeInteger(at) || at < 0 || at > 10 ** 12))
+      throw new Error("目标故事时点须为 0 至 1000000000000 的整数。");
+    const params = new URLSearchParams({ q: query.trim(), limit: "20" });
+    if (at !== null) params.set("at", String(at));
+    setRecommendations(
+      await platformRequest<Recommendations>(
+        `/works/${workId}/memory/retrieve?${params}`,
+      ),
+    );
   }
   async function loadSnapshots(id: string, start = 0) {
     setSnapshots(
@@ -386,6 +411,13 @@ export default function ContextPage() {
               </button>
               <button
                 type="button"
+                disabled={busy || !query.trim()}
+                onClick={() => void run(recommend)}
+              >
+                按相关性推荐
+              </button>
+              <button
+                type="button"
                 disabled={busy}
                 onClick={() =>
                   void run(async () =>
@@ -396,6 +428,69 @@ export default function ContextPage() {
                 刷新正文版本
               </button>
             </div>
+            <section aria-label="相关记忆推荐" className={local.wrap}>
+              <h3>相关记忆推荐</h3>
+              <p>
+                按关键词和目标故事时点查找来源有效的正式记忆，最多展示前 20 条。
+                分数只表示文字匹配程度；推荐不会自动加入快照，也不能保证找齐必要设定。
+                修改关键词或时点后需重新推荐。下方字面检索列表独立保留。
+              </p>
+              {recommendations && (
+                <>
+                  <p role="status">
+                    查询“{recommendations.query}”：检查{" "}
+                    {recommendations.scanned} 条有效记忆， 匹配{" "}
+                    {recommendations.matched} 条，展示{" "}
+                    {recommendations.items.length} 条。
+                  </p>
+                  {!recommendations.items.length && (
+                    <p>
+                      没有相关的有效记忆，请调整关键词或核对来源与故事时点。
+                    </p>
+                  )}
+                  {recommendations.items.map(
+                    ({ memory: m, score, matched_terms }) => (
+                      <article className={styles.record} key={m.id}>
+                        <h4>
+                          {m.title} · v{m.version}
+                        </h4>
+                        <p>
+                          匹配分数：{score}；匹配词：{matched_terms.join("、")}
+                        </p>
+                        <pre className={local.text}>{m.content}</pre>
+                        <StateSummary state={m.story_state} />
+                        <button
+                          type="button"
+                          disabled={
+                            busy ||
+                            choices.length >= 50 ||
+                            choices.some((c) => c.proposal_id === m.id)
+                          }
+                          onClick={() =>
+                            edited(() =>
+                              setChoices([
+                                ...choices,
+                                {
+                                  proposal_id: m.id,
+                                  title: m.title,
+                                  required: true,
+                                },
+                              ]),
+                            )
+                          }
+                        >
+                          推荐加入 {m.title}
+                        </button>
+                      </article>
+                    ),
+                  )}
+                  <p>
+                    这些是查询时的结果，来源仍可能变化；保存快照时会重新核对。超过{" "}
+                    {recommendations.scan_limit} 条有效记忆时，请使用字面检索。
+                  </p>
+                </>
+              )}
+            </section>
             {!memories.length && (
               <p>没有匹配的正式记忆。候选与驳回条目不会进入选择列表。</p>
             )}
