@@ -10,6 +10,20 @@ from app.platform.works import require_work
 router = APIRouter(prefix="/api/v1/works/{work_id}/memory", tags=["memory"])
 
 
+@router.get("/retrieve")
+def retrieve(
+    work_id: str,
+    request: Request,
+    q: str = Query(min_length=1, max_length=256),
+    limit: int = Query(20, ge=1, le=50),
+    at: int | None = Query(None, ge=0, le=1000000000000),
+):
+    from app.platform.memory_retrieval import retrieve as search
+
+    with request.app.state.database.sessions() as session:
+        return search(session, work_id, q, limit=limit, at=at)
+
+
 @router.get("/timeline")
 def timeline(
     work_id: str,
