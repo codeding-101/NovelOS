@@ -108,7 +108,7 @@ Windows 优先使用已安装 Edge 或 Chrome；也可通过 `NOVELOS_BROWSER_PA
 
 升级前保留数据库及主密钥备份；版本变更通过 `python -m app.platform.cli upgrade` 或 migrate 服务执行。`python -m app.platform.cli check` 仅检查版本。未知版本和未受管理的非空库会被拒绝，不能用强制 stamp 掩盖不兼容。
 
-当前 schema 版本为 `0014_task_contexts`；本次迁移新增不可变任务与快照绑定表及索引，旧任务保持未绑定；创建、领取、恢复、发送登记与回报校验绑定依据，不修改历史调用或正文。已有记忆、故事状态与旧请求幂等行为保留。旧正文与任务结果不会自动成为正式记忆，旧 CANON／COMPLETED 也不自动升级；原预算、调用与资产保持不变。此前历史模型任务仍须补齐任务预算才能恢复。公网模型调用保持关闭。API 与 Worker 都须升级后再启动。迁移不提供破坏性降级，恢复旧应用版本须使用升级前数据库备份。操作见 [记忆提案与人工审核](memory-review.md) 、[故事状态与时点查询](story-states.md) 、[上下文快照](context-snapshots.md) 和 [任务上下文](task-contexts.md)。
+当前 schema 版本为 `0015_summary_candidates`；本次迁移只新增不可变摘要候选表、索引与触发器，不为历史作品或任务补造摘要。摘要不进入正式记忆或任务上下文。已有任务快照绑定、记忆、故事状态与旧请求幂等行为保留；旧 CANON／COMPLETED 不自动升级，原预算、调用与资产保持不变。此前历史模型任务仍须补齐任务预算才能恢复。公网模型调用保持关闭。API 与 Worker 都须升级后再启动。迁移不提供破坏性降级，恢复旧应用版本须使用升级前数据库备份。操作见 [摘要候选](summary-candidates.md)、[记忆提案与人工审核](memory-review.md)、[故事状态与时点查询](story-states.md)、[上下文快照](context-snapshots.md) 和 [任务上下文](task-contexts.md)。
 
 当前尚无完整生产备份调度和异机恢复工具。M2 的资产与派生副本恢复、M3 首个工作包的本地任务恢复已通过本地验收；生产使用仍需完成部署验证、真实执行者与预算故障恢复、M9 备份恢复验收。M0 旧库快照脚本不能证明 PostgreSQL 全平台灾难恢复已经覆盖。
 

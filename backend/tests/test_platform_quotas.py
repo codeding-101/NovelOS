@@ -454,7 +454,7 @@ def test_upgrade_preserves_prior_assets_without_inventing_pools(platform_databas
         session.flush()
         work_id = work.id
     db.upgrade()
-    assert db.require_current() == "0014_task_contexts"
+    assert db.require_current() == "0015_summary_candidates"
     with db.sessions() as session:
         assert session.get(Work, work_id).title == "升级前作品"
         for table in (MonthlyQuota, QuotaBinding, QuotaBooking):

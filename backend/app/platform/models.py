@@ -623,3 +623,17 @@ class TaskContext(PlatformBase):
     snapshot_id: Mapped[str] = mapped_column(
         ForeignKey("context_snapshots.id"), index=True
     )
+
+
+class SummaryCandidate(PlatformBase):
+    __tablename__ = "summary_candidates"
+    __table_args__ = (
+        UniqueConstraint("work_id", "request_key", name="summary_request_key"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=identifier)
+    work_id: Mapped[str] = mapped_column(ForeignKey("works.id"), index=True)
+    document: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    request_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
