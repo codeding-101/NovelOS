@@ -637,3 +637,18 @@ class SummaryCandidate(PlatformBase):
     request_key: Mapped[str] = mapped_column(String(128))
     request_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SummaryDecision(PlatformBase):
+    __tablename__ = "summary_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('approved','rejected')", name="summary_decision_outcome"
+        ),
+    )
+    summary_id: Mapped[str] = mapped_column(
+        ForeignKey("summary_candidates.id"), primary_key=True
+    )
+    outcome: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

@@ -522,7 +522,7 @@ def test_upgrade_keeps_existing_memory_and_creates_no_implicit_snapshots(
     body = task_input(db)
     proposal = approved(db, body, story_state=state())
     db.upgrade()
-    assert db.require_current() == "0015_summary_candidates"
+    assert db.require_current() == "0016_summary_decisions"
     with db.sessions() as session:
         assert session.scalar(select(func.count()).select_from(ContextSnapshot)) == 0
         assert session.get(AssetRevision, body.input_revision_id).status == "DRAFT"

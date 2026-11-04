@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from datetime import timezone
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import Field, field_validator, model_validator
@@ -9,7 +10,9 @@ from sqlalchemy import select
 from app.platform.budget_service import signature
 from app.platform.executor_service import lock_work
 from app.platform.memory_service import source_rows
-from app.platform.models import SummaryCandidate
+from app.platform.memory_protocol import DecisionInput
+from app.platform.models import SummaryCandidate, SummaryDecision
+from app.platform.security import utc
 from app.platform.task_protocol import Contract
 from app.platform.works import audit, require_work
 
@@ -55,16 +58,30 @@ def require_summary(session, work_id, summary_id):
     return row
 
 
+class SummaryReview(DecisionInput):
+    expected_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+def decision_data(decision):
+    return {
+        "outcome": decision.outcome,
+        "reason": decision.reason,
+        "created_at": utc(decision.created_at).astimezone(timezone.utc),
+    }
+
+
 def data(session, row):
     document = json.loads(row.document)
     evidence = source_rows(
         session, row.work_id, [s["revision_id"] for s in document["sources"]]
     )
+    decision = session.get(SummaryDecision, row.id)
     return {
         "id": row.id,
         "work_id": row.work_id,
         "created_at": row.created_at,
-        "status": "CANDIDATE",
+        "status": decision.outcome.upper() if decision else "CANDIDATE",
+        "decision": decision_data(decision) if decision else None,
         "sha256": row.sha256,
         "document": document,
         "document_text": row.document,
@@ -143,6 +160,46 @@ def create(db, work_id, body):
 @router.post("", status_code=201)
 def propose(work_id: str, body: SummaryInput, request: Request):
     return {"id": create(request.app.state.database, work_id, body)}
+
+
+@router.post("/{summary_id}/decision")
+def decide(work_id: str, summary_id: str, body: SummaryReview, request: Request):
+    with request.app.state.database.sessions.begin() as session:
+        lock_work(session, work_id)
+        row = require_summary(session, work_id, summary_id)
+        if row.sha256 != body.expected_sha256:
+            raise HTTPException(409, "请核对摘要版本后重新审核")
+        previous = session.get(SummaryDecision, row.id)
+        if previous:
+            if (previous.outcome, previous.reason) != (body.outcome, body.reason):
+                raise HTTPException(409, "摘要已有审核决定，请查看原记录")
+            return decision_data(previous)
+        if body.outcome == "approved":
+            document = json.loads(row.document)
+            for child in document["children"]:
+                decision = session.get(SummaryDecision, child["id"])
+                if decision is None or decision.outcome != "approved":
+                    raise HTTPException(409, "批准上级摘要前须批准全部下级摘要")
+            revisions = [ref["revision_id"] for ref in document["sources"]]
+            if any(
+                not ref["current"]
+                for ref in source_rows(session, work_id, revisions, lock=True)
+            ):
+                raise HTTPException(409, "摘要来源已变化，请核对原文并创建新候选")
+        decision = SummaryDecision(
+            summary_id=row.id, outcome=body.outcome, reason=body.reason
+        )
+        session.add(decision)
+        audit(
+            session,
+            "summary." + body.outcome,
+            work_id,
+            row.id,
+            sha256=row.sha256,
+            reason=body.reason,
+        )
+        session.flush()
+        return decision_data(decision)
 
 
 @router.get("")

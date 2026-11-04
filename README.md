@@ -1,6 +1,6 @@
 # NovelOS
 
-新增[分层摘要候选 API](docs/operations/summary-candidates.md)：保存场景、章节、分卷和全书层级的概述、叙事备注与未决信息，追溯原文并标记来源失效。摘要审核、网页入口和任务上下文接入仍待后续。
+场景、章节、分卷和全书摘要支持逐层人工审核，保留原文版本、审核理由及来源变化记录。接口用法见[分层摘要说明](docs/operations/summary-candidates.md)。
 
 新增[中文正式记忆检索与网页推荐](docs/operations/memory-retrieval.md)，支持相关性排序、来源有效性和故事时点筛选；上下文页面可查看匹配依据并主动加入快照。分层摘要仍待后续工作包。
 

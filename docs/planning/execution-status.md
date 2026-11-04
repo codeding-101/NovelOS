@@ -458,3 +458,13 @@ CI 与 README 已补入新测试；原六个用户文件继续排除。保留仓
 - 证据位于 `data/validation/m4-summary-backend-tests.txt`、`m4-summary-focused.txt`。本轮未改网页，未重新执行前端构建或浏览器；只迁移隔离测试库，原作品库未动。原六个用户文件经 M0 哈希校验不变并排除在提交之外。
 
 后续继续摘要审核、候选替代及网站入口，再推进受控上下文接入与完整性评估。真实模型调用与正文定稿仍关闭，M4 整体尚未完成；GitHub 未推送。操作见 [分层摘要候选](../operations/summary-candidates.md)，设计见 [ADR 0015](../decisions/0015-summary-candidates.md)。
+
+## M4 摘要人工审核 API
+
+交付日期为 2026-11-04。用户可按文档哈希批准或驳回指定摘要版本，并记录审核理由。批准上级摘要须先批准所有直接下级，提交决定时再次锁定并核对直接和继承的原文版本。即使后来原文过期，已有决定、原始文档和同一请求的回执仍可追溯。摘要审核独立于作品正式记忆审批。
+
+数据库迁移 `0016_summary_decisions` 添加独立的不可变审核记录。SQLite 与 PostgreSQL 的摘要专项 14 项通过，包含旧候选升级、分层批准、来源变化、CSRF、驳回及冲突决定。专项首次发现两个数据库返回的时区表示不同，统一为 UTC 后重试回执一致。
+
+修正前启动的完整后端回归为 667 项通过、19 项真实模型用例跳过，两个时区断言失败。两项均包含在修正后通过的 14 项摘要专项中。日志保存在 `data/validation/m4-summary-review-tests.txt` 和 `data/validation/m4-summary-review-focused.txt`。
+
+本次 GitHub 更新目标是开发分支 `codex/novelos-foundation`。后续工作为摘要替代管理、网页审核和受控上下文接入。操作见[摘要审核说明](../operations/summary-candidates.md)。

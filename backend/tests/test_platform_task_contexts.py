@@ -468,7 +468,7 @@ def test_upgrade_preserves_old_task_hash_and_no_implicit_binding(platform_databa
     body = task_input(db)
     task_id = tasks.create_task(db, body)
     db.upgrade()
-    assert db.require_current() == "0015_summary_candidates"
+    assert db.require_current() == "0016_summary_decisions"
     assert tasks.create_task(db, body) == task_id
     with db.sessions() as session:
         assert session.scalar(select(func.count()).select_from(TaskContext)) == 0

@@ -352,7 +352,7 @@ def test_upgrade_preserves_old_hashes_and_unstructured_memory(platform_database)
             request.model_dump(exclude={"story_state"})
         )
     db.upgrade()
-    assert db.require_current() == "0015_summary_candidates"
+    assert db.require_current() == "0016_summary_decisions"
     assert memory.create(db, body.work_id, request) == proposal
     assert detail(db, body.work_id, proposal)["story_state"] is None
     assert at(db, body.work_id, 10) == []

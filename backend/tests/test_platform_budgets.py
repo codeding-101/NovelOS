@@ -69,7 +69,7 @@ def test_budget_upgrade_preserves_existing_task(platform_database):
             )
         )
     db.upgrade()
-    assert db.require_current() == "0015_summary_candidates"
+    assert db.require_current() == "0016_summary_decisions"
     with db.sessions() as session:
         task = session.get(CreativeTask, task_id)
         assert (
